@@ -170,6 +170,8 @@
        (lambda (x y) (tag (* x y))))
   (put 'div '(scheme-number scheme-number)
        (lambda (x y) (tag (/ x y))))
+  (put 'neg '(scheme-number)
+       (lambda (x) (tag (- x))))
   (put 'make 'scheme-number
        (lambda (x) (tag x)))
   (put 'equ '(scheme-number scheme-number) =)
@@ -206,6 +208,8 @@
   (define (div-rat x y)
     (make-rat (* (numer x) (denom y))
               (* (denom x) (numer y))))
+  (define (neg-rat x)
+    (make-rat (- (numer x)) (denom x)))
   ;; interface to rest of the system
   (define (tag x) (attach-tag 'rational x))
   (put 'add '(rational rational)
@@ -216,6 +220,8 @@
        (lambda (x y) (tag (mul-rat x y))))
   (put 'div '(rational rational)
        (lambda (x y) (tag (div-rat x y))))
+  (put 'neg '(rational)
+       (lambda (x) (tag (neg-rat x))))
 
   (put 'make 'rational
        (lambda (n d) (tag (make-rat n d))))
@@ -262,6 +268,9 @@
   (define (div-complex z1 z2)
     (make-from-mag-ang (/ (magnitude z1) (magnitude z2))
                        (- (angle z1) (angle z2))))
+  (define (neg-complex z)
+    (make-from-real-imag (- (real-part z))
+                         (- (imag-part z))))
 
   ;; interface to rest of the system
   (define (tag z) (attach-tag 'complex z))
@@ -273,6 +282,8 @@
        (lambda (z1 z2) (tag (mul-complex z1 z2))))
   (put 'div '(complex complex)
        (lambda (z1 z2) (tag (div-complex z1 z2))))
+  (put 'neg '(complex)
+       (lambda (z) (tag (neg-complex z))))
   (put 'make-from-real-imag 'complex
        (lambda (x y) (tag (make-from-real-imag x y))))
   (put 'make-from-mag-ang 'complex
@@ -372,8 +383,7 @@
         (let ((raise-proc
                (get 'raise (type-tag loop-arg))))
           (if raise-proc
-              (loop (raise-proc loop-arg)
-                    target-type)
+              (loop (raise-proc loop-arg))
               #f))))
   (and (not (equal? (type-tag arg) target-type))
        (loop arg)))
@@ -548,12 +558,26 @@
         (error "polys not in same var -- mul-poly"
                (list p1 p2))))
 
+  (define (neg-terms terms)
+    (if (empty-termlist? terms)
+        '()
+        (let ((term (first-term terms)))
+          (adjoin-term (make-term (order term)
+                                  (neg (coeff term)))
+                       (neg-terms (rest-terms terms))))))
+
+  (define (neg-poly p)
+    (make-poly (variable p)
+               (neg-terms (term-list p))))
+
   ;; interface to rest of the system
   (define (tag p) (attach-tag 'polynomial p))
   (put 'add '(polynomial polynomial)
        (lambda (p1 p2) (tag (add-poly p1 p2))))
   (put 'mul '(polynomial polynomial)
        (lambda (p1 p2) (tag (mul-poly p1 p2))))
+  (put 'sub '(polynomial polynomial)
+       (lambda (p1 p2) (tag (add-poly p1 (neg-poly p2)))))
 
   (put 'make 'polynomial
        (lambda (var terms) (tag (make-poly var terms))))
@@ -576,6 +600,16 @@
   (assert (not (is-zero (make-polynomial 'x '((1 4) (0 3))))))
   (assert (is-zero (make-polynomial 'x '((1 0) (0 0))))))
 (test-assert (test-polynomial-is-zero))
+
+(define (neg x) (apply-generic 'neg x))
+
+(define (test-neg)
+  (assert (equ -1 (neg 1)))
+  (assert (equ (make-rational -2 1)
+               (neg (make-rational 2 1))))
+  (assert-equal -1
+                (imag-part (neg (make-complex-from-real-imag 1 1)))))
+(test-assert (test-neg))
 
 (define (test-polynomial-sub)
   (assert-equal
