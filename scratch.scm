@@ -366,14 +366,17 @@
   (loop args))
 
 (define (multi-raise arg target-type)
-  (if (equal? (type-tag arg) target-type)
-      arg
-      (let ((raise-proc
-             (get 'raise (type-tag arg))))
-        (if raise-proc
-            (multi-raise (raise-proc arg)
-                         target-type)
-            #f))))
+  (define (loop loop-arg)
+    (if (equal? (type-tag loop-arg) target-type)
+        loop-arg
+        (let ((raise-proc
+               (get 'raise (type-tag loop-arg))))
+          (if raise-proc
+              (loop (raise-proc loop-arg)
+                    target-type)
+              #f))))
+  (and (not (equal? (type-tag arg) target-type))
+       (loop arg)))
 
 (define (drop x)
   (let ((project-proc (get 'project (type-tag x))))
@@ -573,3 +576,13 @@
   (assert (not (is-zero (make-polynomial 'x '((1 4) (0 3))))))
   (assert (is-zero (make-polynomial 'x '((1 0) (0 0))))))
 (test-assert (test-polynomial-is-zero))
+
+(define (test-polynomial-sub)
+  (assert-equal
+   (make-polynomial 'x '())
+   (sub (make-polynomial 'x '((2 1))) (make-polynomial 'x '((2 1)))))
+  (assert-equal
+   (make-polynomial 'x '((1 2) (0 1)))
+   (sub (make-polynomial 'x '((1 3) (0 2)))
+        (make-polynomial 'x '((1 1) (0 1))))))
+(test-assert (test-polynomial-sub))
