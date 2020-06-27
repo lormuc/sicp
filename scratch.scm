@@ -193,8 +193,10 @@
   (define (numer x) (car x))
   (define (denom x) (cdr x))
   (define (make-rat n d)
-    (let ((g (greatest-common-divisor n d)))
-      (cons (div n g) (div d g))))
+    (if (and (integer? n) (integer? d))
+        (let ((g (gcd n d)))
+          (cons (/ n g) (/ d g)))
+        (cons n d)))
   (define (add-rat x y)
     (make-rat (add (mul (numer x) (denom y))
                    (mul (numer y) (denom x)))
@@ -500,10 +502,39 @@
   (define (remainder-terms p q)
     (cadr (div-terms p q)))
 
+  (define (pseudoremainder-terms p q)
+    (if (empty-termlist? p)
+        (the-empty-termlist)
+        (let ((c (coeff (first-term q)))
+              (o1 (order (first-term p)))
+              (o2 (order (first-term q))))
+          (let ((p
+                 (mul-term-by-all-terms
+                  (make-term 0 (expt c (- (+ 1 o1) o2)))
+                  p)))
+            (cadr (div-terms p q))))))
+
+  (define (coeffs terms)
+    (if (empty-termlist? terms)
+        '()
+        (cons (coeff (first-term terms))
+              (coeffs (rest-terms terms)))))
+
+  (define (div-coeffs terms divisor)
+    (if (empty-termlist? terms)
+        terms
+        (adjoin-term (make-term (order (first-term terms))
+                                (/ (coeff (first-term terms))
+                                   divisor))
+                     (div-coeffs (rest-terms terms)
+                                 divisor))))
+
   (define (gcd-terms p q)
-    (if (empty-termlist? q)
-        p
-        (gcd-terms q (remainder-terms p q))))
+    (let ((terms
+           (if (empty-termlist? q)
+               p
+               (gcd-terms q (pseudoremainder-terms p q)))))
+      (div-coeffs terms (apply gcd (coeffs terms)))))
 
   (define (gcd-poly p q)
     (if (same-variable? (variable p) (variable q))
@@ -596,3 +627,11 @@
   (assert-equal (make-polynomial 'x '((2 -1) (1 1)))
                 (greatest-common-divisor p1 p2)))
 (test-assert (test-greatest-common-divisor))
+
+(define p1 (make-polynomial 'x '((2 1) (1 -2) (0 1))))
+(define p2 (make-polynomial 'x '((2 11) (0 7))))
+(define p3 (make-polynomial 'x '((1 13) (0 5))))
+(define q1 (mul p1 p2))
+(define q2 (mul p1 p3))
+(display (greatest-common-divisor q1 q2))
+(newline)
