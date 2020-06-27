@@ -1,5 +1,11 @@
 (require-extension test)
 
+(define trace-on #f)
+(define (log-line . args)
+  (if trace-on
+      (begin (display args)
+             (newline))))
+
 (define-syntax assert-equal
   (syntax-rules ()
     ((_ a b)
@@ -159,6 +165,8 @@
 (define (mul x y) (apply-generic 'mul x y))
 (define (div x y) (apply-generic 'div x y))
 
+(define (reduce x y) (apply-generic 'reduce x y))
+
 (define (install-scheme-number-package)
   (define (tag x)
     (attach-tag 'scheme-number x))
@@ -180,6 +188,11 @@
        (lambda (x y) (tag (expt x y))))
   (put 'greatest-common-divisor '(scheme-number scheme-number)
        (lambda (x y) (tag (gcd x y))))
+  (define (reduce-integers n d)
+    (let ((g (gcd n d)))
+      (list (/ n g) (/ d g))))
+  (put 'reduce '(scheme-number scheme-number)
+       (lambda (x y) (map tag (reduce-integers x y))))
   'done)
 
 (define (greatest-common-divisor p q)
@@ -191,12 +204,9 @@
 (define (install-rational-package)
   ;; internal procedures
   (define (numer x) (car x))
-  (define (denom x) (cdr x))
+  (define (denom x) (cadr x))
   (define (make-rat n d)
-    (if (and (integer? n) (integer? d))
-        (let ((g (gcd n d)))
-          (cons (/ n g) (/ d g)))
-        (cons n d)))
+    (reduce n d))
   (define (add-rat x y)
     (make-rat (add (mul (numer x) (denom y))
                    (mul (numer y) (denom x)))
@@ -487,11 +497,11 @@
 
   (define (div-poly p1 p2)
     (if (same-variable? (variable p1) (variable p2))
-        (let ((div-terms-result (div-terms (term-list p1)
-                                           (term-list p2)))
-              (var (variable p1)))
-          (list (tag (make-poly var (car div-terms-result)))
-                (tag (make-poly var (cadr div-terms-result)))))
+        (map (lambda (x)
+               (tag (make-poly (variable p1)
+                               x)))
+             (div-terms (term-list p1)
+                        (term-list p2)))
         (error "polys not in same var -- div-poly"
                (list p1 p2))))
 
@@ -520,14 +530,16 @@
         (cons (coeff (first-term terms))
               (coeffs (rest-terms terms)))))
 
-  (define (div-coeffs terms divisor)
+  (define (map-coeffs f terms)
     (if (empty-termlist? terms)
         terms
         (adjoin-term (make-term (order (first-term terms))
-                                (/ (coeff (first-term terms))
-                                   divisor))
-                     (div-coeffs (rest-terms terms)
-                                 divisor))))
+                                (f (coeff (first-term terms))))
+                     (map-coeffs f
+                                 (rest-terms terms)))))
+
+  (define (div-coeffs terms divisor)
+    (map-coeffs (lambda (x) (/ x divisor)) terms))
 
   (define (gcd-terms p q)
     (let ((terms
@@ -535,6 +547,45 @@
                p
                (gcd-terms q (pseudoremainder-terms p q)))))
       (div-coeffs terms (apply gcd (coeffs terms)))))
+
+  (define (terms-order terms)
+    (order (first-term terms)))
+
+  (define (reduce-terms n d)
+    (define (divide-by-gcd n d g)
+      (let ((integerize
+             (lambda (x)
+               (* x (expt (coeff (first-term g))
+                          (- (+ 1 (max (terms-order n)
+                                       (terms-order d)))
+                             (terms-order g)))))))
+        (let ((n (map-coeffs integerize n))
+              (d (map-coeffs integerize d)))
+          (list (car (div-terms n g))
+                (car (div-terms d g))))))
+    (define (remove-redundant-factors n d)
+      (let ((coeffs-gcd
+             (apply gcd (append (coeffs n)
+                                (coeffs d)))))
+        (let ((n (div-coeffs n coeffs-gcd))
+              (d (div-coeffs d coeffs-gcd)))
+          (if (and (< (coeff (first-term n)) 0)
+                   (< (coeff (first-term d)) 0))
+              (list (neg-terms n) (neg-terms d))
+              (list n d)))))
+    (if (empty-termlist? n)
+        (list n d)
+        (let ((g (gcd-terms n d)))
+          (let ((nd (divide-by-gcd n d g)))
+            (remove-redundant-factors (car nd) (cadr nd))))))
+
+  (define (reduce-poly p q)
+    (if (same-variable? (variable p) (variable q))
+        (map (lambda (x) (make-poly (variable p) x))
+             (reduce-terms (term-list p)
+                           (term-list q)))
+        (error "polys not in same var -- reduce-poly"
+               (list p q))))
 
   (define (gcd-poly p q)
     (if (same-variable? (variable p) (variable q))
@@ -569,6 +620,8 @@
   (put 'greatest-common-divisor '(polynomial polynomial)
        (lambda (p q)
          (tag (gcd-poly p q))))
+  (put 'reduce '(polynomial polynomial)
+       (lambda (p q) (map tag (reduce-poly p q))))
   'done)
 (install-polynomial-package)
 
@@ -628,10 +681,22 @@
                 (greatest-common-divisor p1 p2)))
 (test-assert (test-greatest-common-divisor))
 
-(define p1 (make-polynomial 'x '((2 1) (1 -2) (0 1))))
-(define p2 (make-polynomial 'x '((2 11) (0 7))))
-(define p3 (make-polynomial 'x '((1 13) (0 5))))
-(define q1 (mul p1 p2))
-(define q2 (mul p1 p3))
-(display (greatest-common-divisor q1 q2))
-(newline)
+(define (test-reduced-polynomial-fractions)
+  (assert-equal
+   (make-rational (make-polynomial 'x '((1 1)))
+                  (make-polynomial 'x '((0 1))))
+   (make-rational (make-polynomial 'x '((2 1)))
+                  (make-polynomial 'x '((1 1)))))
+  (define p1 (make-polynomial 'x '((1 1) (0 1))))
+  (define p2 (make-polynomial 'x '((3 1) (0 -1))))
+  (define p3 (make-polynomial 'x '((1 1))))
+  (define p4 (make-polynomial 'x '((2 1) (0 -1))))
+  (define rf1 (make-rational p1 p2))
+  (define rf2 (make-rational p3 p4))
+  (assert-equal
+   (make-rational (make-polynomial 'x '((3 1) (2 2) (1 3) (0 1)))
+                  (make-polynomial 'x '((4 1) (3 1) (1 -1) (0 -1))))
+   (add rf1 rf2)))
+(test-assert (test-reduced-polynomial-fractions))
+
+(define trace-on #f)
