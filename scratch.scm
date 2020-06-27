@@ -566,6 +566,35 @@
                                   (neg (coeff term)))
                        (neg-terms (rest-terms terms))))))
 
+  (define (div-terms l1 l2)
+    (if (empty-termlist? l1)
+        (list (the-empty-termlist) (the-empty-termlist))
+        (let ((t1 (first-term l1))
+              (t2 (first-term l2)))
+          (if (> (order t2) (order t1))
+              (list (the-empty-termlist) l1)
+              (let ((new-c (div (coeff t1) (coeff t2)))
+                    (new-o (- (order t1) (order t2))))
+                (let ((rest-of-result
+                       (div-terms (add-terms
+                                   l1
+                                   (neg-terms
+                                    (mul-term-by-all-terms
+                                     (make-term new-o new-c) l2))) l2)))
+                  (list (adjoin-term (make-term new-o new-c)
+                                     (car rest-of-result))
+                        (cadr rest-of-result))))))))
+
+  (define (div-poly p1 p2)
+    (if (same-variable? (variable p1) (variable p2))
+        (let ((div-terms-result (div-terms (term-list p1)
+                                           (term-list p2)))
+              (var (variable p1)))
+          (list (tag (make-poly var (car div-terms-result)))
+                (tag (make-poly var (cadr div-terms-result)))))
+        (error "polys not in same var -- div-poly"
+               (list p1 p2))))
+
   (define (neg-poly p)
     (make-poly (variable p)
                (neg-terms (term-list p))))
@@ -578,6 +607,9 @@
        (lambda (p1 p2) (tag (mul-poly p1 p2))))
   (put 'sub '(polynomial polynomial)
        (lambda (p1 p2) (tag (add-poly p1 (neg-poly p2)))))
+
+  (put 'div '(polynomial polynomial)
+       (lambda (p1 p2) (div-poly p1 p2)))
 
   (put 'make 'polynomial
        (lambda (var terms) (tag (make-poly var terms))))
@@ -620,3 +652,15 @@
    (sub (make-polynomial 'x '((1 3) (0 2)))
         (make-polynomial 'x '((1 1) (0 1))))))
 (test-assert (test-polynomial-sub))
+
+(define (test-polynomial-div)
+  (assert-equal (list (make-polynomial 'x '((1 1)))
+                      (make-polynomial 'x '()))
+                (div (make-polynomial 'x '((1 1)))
+                     (make-polynomial 'x '((0 1)))))
+  (assert-equal (list (make-polynomial 'r '((3 1) (1 1)))
+                      (make-polynomial 'r '((1 1) (0 -1))))
+                (div
+                 (make-polynomial 'r '((5 1) (0 -1)))
+                 (make-polynomial 'r '((2 1) (0 -1))))))
+(test-assert (test-polynomial-div))
