@@ -178,7 +178,12 @@
        (lambda (x) (= x 0)))
   (put 'exp '(scheme-number scheme-number)
        (lambda (x y) (tag (expt x y))))
+  (put 'greatest-common-divisor '(scheme-number scheme-number)
+       (lambda (x y) (tag (gcd x y))))
   'done)
+
+(define (greatest-common-divisor p q)
+  (apply-generic 'greatest-common-divisor p q))
 
 (define (make-scheme-number n)
   ((get 'make 'scheme-number) n))
@@ -188,10 +193,8 @@
   (define (numer x) (car x))
   (define (denom x) (cdr x))
   (define (make-rat n d)
-    (if (and (integer? n) (integer? d))
-        (let ((g (gcd n d)))
-          (cons (/ n g) (/ d g)))
-        (cons n d)))
+    (let ((g (greatest-common-divisor n d)))
+      (cons (div n g) (div d g))))
   (define (add-rat x y)
     (make-rat (add (mul (numer x) (denom y))
                    (mul (numer y) (denom x)))
@@ -494,6 +497,22 @@
     (make-poly (variable p)
                (neg-terms (term-list p))))
 
+  (define (remainder-terms p q)
+    (cadr (div-terms p q)))
+
+  (define (gcd-terms p q)
+    (if (empty-termlist? q)
+        p
+        (gcd-terms q (remainder-terms p q))))
+
+  (define (gcd-poly p q)
+    (if (same-variable? (variable p) (variable q))
+        (make-poly (variable p)
+                   (gcd-terms (term-list p)
+                              (term-list q)))
+        (error "polys not in same var -- gcd-poly"
+               (list p q))))
+
   ;; interface to rest of the system
   (define (tag p) (attach-tag 'polynomial p))
   (put 'add '(polynomial polynomial)
@@ -504,7 +523,7 @@
        (lambda (p1 p2) (tag (add-poly p1 (neg-poly p2)))))
 
   (put 'div '(polynomial polynomial)
-       (lambda (p1 p2) (div-poly p1 p2)))
+       (lambda (p1 p2) (car (div-poly p1 p2))))
 
   (put 'make 'polynomial
        (lambda (var terms) (tag (make-poly var terms))))
@@ -516,6 +535,9 @@
 
   (put 'is-zero '(polynomial)
        (lambda (p) (terms-zero? (term-list p))))
+  (put 'greatest-common-divisor '(polynomial polynomial)
+       (lambda (p q)
+         (tag (gcd-poly p q))))
   'done)
 (install-polynomial-package)
 
@@ -549,12 +571,10 @@
 (test-assert (test-polynomial-sub))
 
 (define (test-polynomial-div)
-  (assert-equal (list (make-polynomial 'x '((1 1)))
-                      (make-polynomial 'x '()))
+  (assert-equal (make-polynomial 'x '((1 1)))
                 (div (make-polynomial 'x '((1 1)))
                      (make-polynomial 'x '((0 1)))))
-  (assert-equal (list (make-polynomial 'r '((3 1) (1 1)))
-                      (make-polynomial 'r '((1 1) (0 -1))))
+  (assert-equal (make-polynomial 'r '((3 1) (1 1)))
                 (div
                  (make-polynomial 'r '((5 1) (0 -1)))
                  (make-polynomial 'r '((2 1) (0 -1))))))
@@ -568,3 +588,11 @@
                (add (make-rational p q)
                     (make-rational p q)))))
 (test-assert (test-polynomial-fractions))
+
+(define (test-greatest-common-divisor)
+  (assert-equal 6 (greatest-common-divisor 30 24))
+  (define p1 (make-polynomial 'x '((4 1) (3 -1) (2 -2) (1 2))))
+  (define p2 (make-polynomial 'x '((3 1) (1 -1))))
+  (assert-equal (make-polynomial 'x '((2 -1) (1 1)))
+                (greatest-common-divisor p1 p2)))
+(test-assert (test-greatest-common-divisor))
