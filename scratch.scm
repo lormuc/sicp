@@ -94,6 +94,10 @@
           (s 'reset-count)
           (s 'how-many-calls?)))))
 
+(define cops-called #f)
+(define (call-the-cops)
+  (set! cops-called #t))
+
 (define (make-account balance password)
   (define (withdraw amount)
     (if (>= balance amount)
@@ -108,10 +112,17 @@
           ((eq? m 'deposit) deposit)
           (else (error "unknown request -- make-account"
                        m))))
-  (lambda (given-password message)
-    (if (not (eq? given-password password))
-        (lambda (x) "incorrect password")
-        (dispatch message))))
+  (let ((attempt-count 0))
+    (lambda (given-password message)
+      (if (not (eq? given-password password))
+          (begin
+            (set! attempt-count (+ 1 attempt-count))
+            (if (> attempt-count 7)
+                (call-the-cops))
+            (lambda (x) "incorrect password"))
+          (begin
+            (set! attempt-count 0)
+            (dispatch message))))))
 
 (test-group
  "make-account password"
@@ -124,3 +135,29 @@
   (let ((acc (make-account 100 'secret-password)))
     (list ((acc 'secret-password 'withdraw) 40)
           ((acc 'some-other-password 'deposit) 50)))))
+
+(test-group
+ "make-account password cops"
+ (test
+  '("incorrect password"
+    "incorrect password"
+    "incorrect password"
+    "incorrect password"
+    "incorrect password"
+    "incorrect password"
+    "incorrect password"
+    #f
+    "incorrect password"
+    #t)
+  (let ((acc (make-account 50 'password)))
+    (list ((acc 'incorrect-password 'deposit) 40)
+          ((acc 'incorrect-password 'deposit) 40)
+          ((acc 'incorrect-password 'deposit) 40)
+          ((acc 'incorrect-password 'deposit) 40)
+          ((acc 'incorrect-password 'deposit) 40)
+          ((acc 'incorrect-password 'deposit) 40)
+          ((acc 'incorrect-password 'deposit) 40)
+          cops-called
+          ((acc 'incorrect-password 'deposit) 40)
+          cops-called)))
+ (set! cops-called #f))
