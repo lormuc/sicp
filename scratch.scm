@@ -1,3 +1,4 @@
+(import (chicken random))
 (require-extension test)
 
 (define true #t)
@@ -161,3 +162,34 @@
           ((acc 'incorrect-password 'deposit) 40)
           cops-called)))
  (set! cops-called #f))
+
+(define (monte-carlo trials experiment)
+  (define (iter trials-remaining trials-passed)
+    (cond ((= trials-remaining 0)
+           (/ trials-passed trials))
+          ((experiment)
+           (iter (- trials-remaining 1) (+ trials-passed 1)))
+          (else
+           (iter (- trials-remaining 1) trials-passed))))
+  (iter trials 0))
+
+(define (random-in-range low high)
+  (+ low (* (pseudo-random-real) (- high low))))
+
+(define (estimate-integral p x1 x2 y1 y2 trials)
+  (let ((rectangle-area (* (- x2 x1) (- y2 y1))))
+    (* rectangle-area
+       (monte-carlo
+        trials
+        (lambda ()
+          (p (random-in-range x1 x2)
+             (random-in-range y1 y2)))))))
+
+(display
+ (exact->inexact
+  (estimate-integral
+   (lambda (x y)
+     (<= (+ (* x x) (* y y)) 1))
+   -1 1 -1 1
+   3000000)))
+(newline)
