@@ -9,20 +9,6 @@
       (begin (display args)
              (newline))))
 
-(define-syntax assert-equal
-  (syntax-rules ()
-    ((_ a b)
-     (let ((b-value b))
-       (let ((comparator
-              (if (and (number? a)
-                       (not (integer? a))
-                       (number? b))
-                  (lambda (x y) (< (abs (- x y)) 0.001))
-                  equal?)))
-         (if (not (comparator a b-value))
-             (begin (error (list (quote b) 'is b-value 'not a)))))))))
-
-
 (define (assoc key records)
   (cond ((null? records) false)
         ((equal? key (caar records)) (car records))
@@ -63,3 +49,19 @@
 (define put (operation-table 'insert-proc!))
 
 (define debug #f)
+
+(define (make-accumulator n)
+  (lambda (m)
+    (set! n (+ n m))
+    n))
+
+(test-group
+ "accumulator"
+ (test
+  '(1 2 3)
+  (let ((acc (make-accumulator 0)))
+    (list (acc 1) (acc 1) (acc 1))))
+ (test
+  '(3 4 5)
+  (let ((acc (make-accumulator 2)))
+    (list (acc 1) (acc 1) (acc 1)))))
