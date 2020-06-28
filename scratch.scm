@@ -93,3 +93,34 @@
           (s 1)
           (s 'reset-count)
           (s 'how-many-calls?)))))
+
+(define (make-account balance password)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (define (dispatch m)
+    (cond ((eq? m 'withdraw) withdraw)
+          ((eq? m 'deposit) deposit)
+          (else (error "unknown request -- make-account"
+                       m))))
+  (lambda (given-password message)
+    (if (not (eq? given-password password))
+        (lambda (x) "incorrect password")
+        (dispatch message))))
+
+(test-group
+ "make-account password"
+ (test
+  '(0)
+  (let ((acc (make-account 0 'password)))
+    (list ((acc 'password 'deposit) 0))))
+ (test
+  '(60 "incorrect password")
+  (let ((acc (make-account 100 'secret-password)))
+    (list ((acc 'secret-password 'withdraw) 40)
+          ((acc 'some-other-password 'deposit) 50)))))
