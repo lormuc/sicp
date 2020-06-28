@@ -185,11 +185,50 @@
           (p (random-in-range x1 x2)
              (random-in-range y1 y2)))))))
 
-(display
- (exact->inexact
-  (estimate-integral
-   (lambda (x y)
-     (<= (+ (* x x) (* y y)) 1))
-   -1 1 -1 1
-   3000000)))
-(newline)
+(define random-init 0)
+
+(define (rand-update x)
+  (+ 1 x))
+
+(define rand
+  (let ((x random-init))
+    (lambda (m)
+      (cond ((eq? m 'generate)
+             (set! x (rand-update x))
+             x)
+            ((eq? m 'reset)
+             (lambda (new-x)
+               (set! x new-x)
+               x))
+            (else (error "unknown request -- rand" m))))))
+
+(test-group
+ "rand reset"
+ (test
+  '(1 2 5 6)
+  (list (rand 'generate)
+        (rand 'generate)
+        ((rand 'reset) 5)
+        (rand 'generate))))
+
+(define (make-joint acc acc-pass new-pass)
+  (lambda (pass action)
+    (if (eq? pass new-pass)
+        (acc acc-pass action)
+        (lambda (x) "incorrect password"))))
+
+(test-group
+ "make-joint"
+ (test
+  "incorrect password"
+  (let ((peter-acc (make-account 100 'open-sesame)))
+    (let ((paul-acc
+           (make-joint peter-acc 'open-sesame 'rosebud)))
+      ((paul-acc 'open-sesame 'withdraw) 1))))
+ (test
+  (list 50 50)
+  (let ((peter-acc (make-account 100 'open-sesame)))
+    (let ((paul-acc
+           (make-joint peter-acc 'open-sesame 'rosebud)))
+      (list ((paul-acc 'rosebud 'withdraw) 50)
+            ((peter-acc 'open-sesame 'withdraw) 0))))))
