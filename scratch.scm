@@ -65,3 +65,31 @@
   '(3 4 5)
   (let ((acc (make-accumulator 2)))
     (list (acc 1) (acc 1) (acc 1)))))
+
+(define square (lambda (x) (* x x)))
+
+(define (make-monitored f)
+  (let ((count 0))
+    (lambda (x)
+      (cond ((eq? x 'reset-count)
+             (set! count 0)
+             count)
+            ((eq? x 'how-many-calls?)
+             count)
+            (else
+             (set! count (+ 1 count))
+             (f x))))))
+
+(test-group
+ "make-monitored"
+ (test
+  '(0 0)
+  (let ((s (make-monitored (lambda (x) (* 2 x)))))
+    (list (s 'how-many-calls?) (s 0))))
+ (test
+  '(4 9 2 1 0 0)
+  (let ((s (make-monitored square)))
+    (list (s 2) (s 3) (s 'how-many-calls?)
+          (s 1)
+          (s 'reset-count)
+          (s 'how-many-calls?)))))
