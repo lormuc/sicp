@@ -232,3 +232,21 @@
            (make-joint peter-acc 'open-sesame 'rosebud)))
       (list ((paul-acc 'rosebud 'withdraw) 50)
             ((peter-acc 'open-sesame 'withdraw) 0))))))
+
+(define s -1)
+
+(define (f x)
+  (if (= s -1)
+      (set! s x))
+  (/ s 2))
+
+(let ((x (f 0)))
+  (let ((y (f 1)))
+    (display (+ x y))
+    (newline)))
+
+(set! s -1)
+(let ((x (f 1)))
+  (let ((y (f 0)))
+    (display (+ x y))
+    (newline)))
