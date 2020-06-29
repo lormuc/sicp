@@ -49,8 +49,6 @@
 (define get (operation-table 'lookup-proc))
 (define put (operation-table 'insert-proc!))
 
-(define debug #f)
-
 (define (make-accumulator n)
   (lambda (m)
     (set! n (+ n m))
@@ -250,3 +248,39 @@
   (let ((y (f 0)))
     (display (+ x y))
     (newline)))
+
+(define (count-pairs y)
+  (define visited-pairs '())
+  (define (rec x)
+    (if (or (not (pair? x))
+            (memq x visited-pairs))
+        0
+        (begin
+          (set! visited-pairs (cons x visited-pairs))
+          (+ (rec (car x))
+             (rec (cdr x))
+             1))))
+  (rec y))
+
+(test-group
+ "count-pairs"
+ (test 3 (count-pairs '(a b c)))
+ (test
+  3
+  (let ((yy '(b c)))
+    (let ((y (cons (cdr yy) yy)))
+      (count-pairs y))))
+ (test
+  3
+  (let ((zzz '(a)))
+    (let ((zz (cons zzz zzz)))
+      (let ((z (cons zz zz)))
+        (count-pairs z)))))
+ (test
+  3
+  (let ((w '(c a b)))
+    (set-car! w w)
+    (count-pairs w)))
+ )
+
+(define debug #t)
