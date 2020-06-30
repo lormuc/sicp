@@ -307,47 +307,91 @@
     (set-cdr! x x)
     (has-cycle x))))
 
-(define (front-ptr queue) (car queue))
-(define (rear-ptr queue) (cdr queue))
-(define (set-front-ptr! queue item) (set-car! queue item))
-(define (set-rear-ptr! queue item) (set-cdr! queue item))
+;; (define (front-ptr queue) (car queue))
+;; (define (rear-ptr queue) (cdr queue))
+;; (define (set-front-ptr! queue item) (set-car! queue item))
+;; (define (set-rear-ptr! queue item) (set-cdr! queue item))
 
-(define (empty-queue? queue) (null? (front-ptr queue)))
-(define (make-queue) (cons '() '()))
+;; (define (empty-queue? queue) (null? (front-ptr queue)))
+;; (define (make-queue) (cons '() '()))
 
+;; (define (front-queue queue)
+;;   (if (empty-queue? queue)
+;;       (error "front called with an empty queue" queue)
+;;       (car (front-ptr queue))))
+
+;; (define (insert-queue! queue item)
+;;   (let ((new-pair (cons item '())))
+;;     (cond ((empty-queue? queue)
+;;            (set-front-ptr! queue new-pair)
+;;            (set-rear-ptr! queue new-pair)
+;;            queue)
+;;           (else
+;;            (set-cdr! (rear-ptr queue) new-pair)
+;;            (set-rear-ptr! queue new-pair)
+;;            queue))))
+
+;; (define (delete-queue! queue)
+;;   (cond ((empty-queue? queue)
+;;          (error "delete! called with an empty queue" queue))
+;;         (else
+;;          (set-front-ptr! queue (cdr (front-ptr queue)))
+;;          queue)))
+
+;; (define (print-queue queue)
+;;   (display (front-ptr queue)))
+
+(define (make-queue)
+  (let ((front-ptr '())
+        (rear-ptr '()))
+    (define (dispatch m)
+      (cond ((eq? m 'empty?)
+             (null? front-ptr))
+            ((eq? m 'front)
+             (if (null? front-ptr)
+                 (error "front called with an empty queue")
+                 (car front-ptr)))
+            ((eq? m 'insert!)
+             (lambda (item)
+               (let ((new-pair (cons item '())))
+                 (cond ((null? front-ptr)
+                        (set! front-ptr new-pair)
+                        (set! rear-ptr new-pair))
+                       (else
+                        (set-cdr! rear-ptr new-pair)
+                        (set! rear-ptr new-pair))))))
+            ((eq? m 'delete!)
+             (if (null? front-ptr)
+                 (error "delete on empty queue")
+                 (set! front-ptr (cdr front-ptr))))
+            (else
+             (error "unknown operation -- queue" m))))
+    dispatch))
+
+(define (empty-queue? queue)
+  (queue 'empty?))
 (define (front-queue queue)
-  (if (empty-queue? queue)
-      (error "front called with an empty queue" queue)
-      (car (front-ptr queue))))
-
+  (queue 'front))
 (define (insert-queue! queue item)
-  (let ((new-pair (cons item '())))
-    (cond ((empty-queue? queue)
-           (set-front-ptr! queue new-pair)
-           (set-rear-ptr! queue new-pair)
-           queue)
-          (else
-           (set-cdr! (rear-ptr queue) new-pair)
-           (set-rear-ptr! queue new-pair)
-           queue))))
-
+  ((queue 'insert!) item))
 (define (delete-queue! queue)
-  (cond ((empty-queue? queue)
-         (error "delete! called with an empty queue" queue))
-        (else
-         (set-front-ptr! queue (cdr (front-ptr queue)))
-         queue)))
+  (queue 'delete!))
 
-(define (print-queue queue)
-  (display (front-ptr queue)))
-
-(define queue (make-queue))
-(insert-queue! queue 'a)
-(insert-queue! queue 'b)
-(insert-queue! queue 'c)
-(insert-queue! queue 'd)
-(print-queue queue)
-(newline)
-(delete-queue! queue)
+(test-group
+ "queue"
+ (test
+  'x
+  (let ((queue (make-queue)))
+    (insert-queue! queue 'x)
+    (front-queue queue)))
+ (test
+  '(a b)
+  (let ((queue (make-queue)))
+    (insert-queue! queue 'a)
+    (insert-queue! queue 'b)
+    (insert-queue! queue 'c)
+    (let ((front-0 (front-queue queue)))
+      (delete-queue! queue)
+      (list front-0 (front-queue queue))))))
 
 (define debug #t)
