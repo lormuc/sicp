@@ -440,25 +440,20 @@
     (list (deque-front deque)
           (deque-rear deque)))))
 
-(define (assoc key records same-key?)
-  (cond ((null? records) false)
-        ((same-key? key (caar records)) (car records))
-        (else (assoc key (cdr records) same-key?))))
-
-(define (make-table same-key?)
+(define (make-table)
   (let ((local-table (list '*table*)))
     (define (lookup key-1 key-2)
-      (let ((subtable (assoc key-1 (cdr local-table) same-key?)))
+      (let ((subtable (assoc key-1 (cdr local-table))))
         (if subtable
-            (let ((record (assoc key-2 (cdr subtable) same-key?)))
+            (let ((record (assoc key-2 (cdr subtable))))
               (if record
                   (cdr record)
                   false))
             false)))
     (define (insert! key-1 key-2 value)
-      (let ((subtable (assoc key-1 (cdr local-table) same-key?)))
+      (let ((subtable (assoc key-1 (cdr local-table))))
         (if subtable
-            (let ((record (assoc key-2 (cdr subtable) same-key?)))
+            (let ((record (assoc key-2 (cdr subtable))))
               (if record
                   (set-cdr! record value)
                   (set-cdr! subtable
@@ -475,21 +470,8 @@
             (else (error "unknown operation -- table" m))))
     dispatch))
 
-(define operation-table (make-table equal?))
+(define operation-table (make-table))
 (define get (operation-table 'lookup-proc))
 (define put (operation-table 'insert-proc!))
-
-(test-group
- "make-table same-key?"
- (test
-  '(0 3)
-  (let ((same-key?
-         (lambda (x y)
-           (= (modulo (- x y) 5) 0))))
-    (let ((table (make-table same-key?)))
-      ((table 'insert-proc!) 0 0 0)
-      ((table 'insert-proc!) 1 2 3)
-      (list ((table 'lookup-proc) 5 5)
-            ((table 'lookup-proc) 11 2))))))
 
 (define debug #t)
