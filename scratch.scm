@@ -605,12 +605,12 @@
 (define (probe name wire)
   (add-action! wire
                (lambda ()
-                 (newline)
                  (display name)
                  (display " ")
                  (display (current-time the-agenda))
                  (display "  new-value = ")
-                 (display (get-signal wire)))))
+                 (display (get-signal wire))
+                 (newline))))
 
 (define (make-time-segment time queue)
   (cons time queue))
@@ -673,8 +673,8 @@
         (front-queue (segment-queue first-seg)))))
 
 (define the-agenda (make-agenda))
-(define and-gate-delay 0)
 (define inverter-delay 0)
+(define and-gate-delay 0)
 (define or-gate-delay 0)
 
 (define (logical-not s)
@@ -712,15 +712,16 @@
       1
       0))
 
-(define (or-gate x y output)
-  (let ((inv-x (make-wire))
-        (inv-y (make-wire))
-        (inv-and (make-wire)))
-    (inverter x inv-x)
-    (inverter y inv-y)
-    (and-gate inv-x inv-y inv-and)
-    (inverter inv-and output)
-    'ok))
+(define (or-gate a1 a2 output)
+  (define (or-action-procedure)
+    (let ((new-value
+           (logical-or (get-signal a1) (get-signal a2))))
+      (after-delay or-gate-delay
+                   (lambda ()
+                     (set-signal! output new-value)))))
+  (add-action! a1 or-action-procedure)
+  (add-action! a2 or-action-procedure)
+  'ok)
 
 (define (half-adder a b s c)
   (let ((d (make-wire))
