@@ -268,40 +268,6 @@
     (set-cdr! x x)
     (has-cycle x))))
 
-;; (define (front-ptr queue) (car queue))
-;; (define (rear-ptr queue) (cdr queue))
-;; (define (set-front-ptr! queue item) (set-car! queue item))
-;; (define (set-rear-ptr! queue item) (set-cdr! queue item))
-
-;; (define (empty-queue? queue) (null? (front-ptr queue)))
-;; (define (make-queue) (cons '() '()))
-
-;; (define (front-queue queue)
-;;   (if (empty-queue? queue)
-;;       (error "front called with an empty queue" queue)
-;;       (car (front-ptr queue))))
-
-;; (define (insert-queue! queue item)
-;;   (let ((new-pair (cons item '())))
-;;     (cond ((empty-queue? queue)
-;;            (set-front-ptr! queue new-pair)
-;;            (set-rear-ptr! queue new-pair)
-;;            queue)
-;;           (else
-;;            (set-cdr! (rear-ptr queue) new-pair)
-;;            (set-rear-ptr! queue new-pair)
-;;            queue))))
-
-;; (define (delete-queue! queue)
-;;   (cond ((empty-queue? queue)
-;;          (error "delete! called with an empty queue" queue))
-;;         (else
-;;          (set-front-ptr! queue (cdr (front-ptr queue)))
-;;          queue)))
-
-;; (define (print-queue queue)
-;;   (display (front-ptr queue)))
-
 (define (make-queue)
   (let ((front-ptr '())
         (rear-ptr '()))
@@ -473,5 +439,118 @@
 (define operation-table (make-table))
 (define get (operation-table 'lookup-proc))
 (define put (operation-table 'insert-proc!))
+
+(define (make-table)
+  (list '*table*))
+
+(define (lookup key table)
+  (let ((record (assoc key (cdr table))))
+    (if record
+        (cdr record)
+        false)))
+
+(define (assoc key records)
+  (cond ((null? records) false)
+        ((equal? key (caar records)) (car records))
+        (else (assoc key (cdr records)))))
+
+(define (insert! key value table)
+  (let ((record (assoc key (cdr table))))
+    (if record
+        (set-cdr! record value)
+        (set-cdr! table
+                  (cons (cons key value) (cdr table)))))
+  'ok)
+
+(define (make-binary-tree)
+  (define (make-empty-tree)
+    (list '() '() '()))
+  (define (tree-empty? tree)
+    (null? (car tree)))
+  (define (tree-set-entry! tree entry)
+    (set-car! tree entry))
+  (define (tree-entry tree)
+    (car tree))
+  (define (tree-set-left-branch! tree branch)
+    (set-car! (cdr tree) branch))
+  (define (tree-left-branch tree)
+    (cadr tree))
+  (define (tree-set-right-branch! tree branch)
+    (set-car! (cddr tree) branch))
+  (define (tree-right-branch tree)
+    (caddr tree))
+  (let ((tree (make-empty-tree)))
+    (define (insert! a-key a-value a-tree)
+      (cond ((tree-empty? a-tree)
+             (tree-set-entry! a-tree (cons a-key a-value))
+             (tree-set-left-branch! a-tree (make-empty-tree))
+             (tree-set-right-branch! a-tree (make-empty-tree)))
+            ((= a-key (car (tree-entry a-tree)))
+             (set-cdr! (tree-entry a-tree) a-value))
+            ((< a-key (car (tree-entry a-tree)))
+             (insert! a-key a-value (tree-left-branch a-tree)))
+            ((> a-key (car (tree-entry a-tree)))
+             (insert! a-key a-value (tree-right-branch a-tree)))))
+    (define (lookup a-key a-tree)
+      (cond ((tree-empty? a-tree) #f)
+            ((= a-key (car (tree-entry a-tree)))
+             (tree-entry a-tree))
+            ((< a-key (car (tree-entry a-tree)))
+             (lookup a-key (tree-left-branch a-tree)))
+            ((> a-key (car (tree-entry a-tree)))
+             (lookup a-key (tree-right-branch a-tree)))))
+    (define (dispatch m)
+      (cond ((eq? m 'lookup)
+             (lambda (key) (lookup key tree)))
+            ((eq? m 'insert!)
+             (lambda (key value) (insert! key value tree)))
+            (else (error "unknown request -- binary-tree" m))))
+    dispatch))
+
+(define (binary-tree-lookup tree key)
+  ((tree 'lookup) key))
+
+(define (binary-tree-insert! tree key value)
+  ((tree 'insert!) key value))
+
+(test-group
+ "mutable binary tree"
+ (test
+  '(#f)
+  (let ((binary-tree (make-binary-tree)))
+    (list (binary-tree-lookup binary-tree 0))))
+ (test
+  '(a b c)
+  (let ((binary-tree (make-binary-tree)))
+    (binary-tree-insert! binary-tree 1 'a)
+    (binary-tree-insert! binary-tree 3 'b)
+    (binary-tree-insert! binary-tree 0 'z)
+    (binary-tree-insert! binary-tree 0 'c)
+    (list (cdr (binary-tree-lookup binary-tree 1))
+          (cdr (binary-tree-lookup binary-tree 3))
+          (cdr (binary-tree-lookup binary-tree 0))))))
+
+(define (make-fast-table)
+  (make-binary-tree))
+
+(define (fast-table-lookup key table)
+  (binary-tree-lookup table key))
+
+(define (fast-table-insert! key value table)
+  (binary-tree-insert! table key value)
+  'ok)
+
+(test-group
+ "table with binary tree"
+ (test
+  '(1 3 0 #f)
+  (let ((table (make-fast-table)))
+    (fast-table-insert! 0 1 table)
+    (fast-table-insert! 1 3 table)
+    (fast-table-insert! 2 0 table)
+    (list (cdr (fast-table-lookup 0 table))
+          (cdr (fast-table-lookup 1 table))
+          (cdr (fast-table-lookup 2 table))
+          (fast-table-lookup 3 table)))))
 
 (define debug #t)
