@@ -722,6 +722,24 @@
     (inverter inv-and output)
     'ok))
 
+(define (half-adder a b s c)
+  (let ((d (make-wire))
+        (e (make-wire)))
+    (or-gate a b d)
+    (and-gate a b c)
+    (inverter c e)
+    (and-gate d e s)
+    'ok))
+
+(define (full-adder a b c-in sum c-out)
+  (let ((s (make-wire))
+        (c1 (make-wire))
+        (c2 (make-wire)))
+    (half-adder b c-in s c1)
+    (half-adder a s sum c2)
+    (or-gate c1 c2 c-out)
+    'ok))
+
 (test-group
  "or-gate"
  (let ((check
@@ -739,5 +757,49 @@
    (check 0 1 1)
    (check 1 0 1)
    (check 1 1 1)))
+
+(define (ripple-carry-adder a b sum carry)
+  (if (null? a)
+      (set-signal! carry 0)
+      (let ((carry-aux (make-wire)))
+        (full-adder (car a) (car b) carry-aux
+                    (car sum) carry)
+        (ripple-carry-adder (cdr a) (cdr b)
+                            (cdr sum) carry-aux))))
+
+(define (set-signals! signals values)
+  (if (null? values)
+      '()
+      (begin
+        (set-signal! (car signals) (car values))
+        (set-signals! (cdr signals) (cdr values)))))
+
+(define (get-signals signals)
+  (map get-signal signals))
+
+(define (make-wires n)
+  (define (helper i result)
+    (if (= i 0)
+        result
+        (helper (- i 1) (cons (make-wire) result))))
+  (helper n '()))
+
+(test-group
+ "ripple-carry-adder"
+ (define (check a-bits b-bits s-bits c-bit)
+   (test
+    (list s-bits c-bit)
+    (let ((a (make-wires (length a-bits)))
+          (b (make-wires (length b-bits)))
+          (s (make-wires (length s-bits)))
+          (c (make-wire)))
+      (ripple-carry-adder a b s c)
+      (set-signals! a a-bits)
+      (set-signals! b b-bits)
+      (list (get-signals s) (get-signal c)))))
+ (check '(1) '(1) '(0) 1)
+ (check '(1 0 1) '(0 0 1) '(1 1 0) 0)
+ (check '(1 1 1 1) '(0 0 0 1) '(0 0 0 0) 1)
+ (check '(0 1 0 0) '(0 1 0 0) '(1 0 0 0) 0))
 
 (define debug #t)
