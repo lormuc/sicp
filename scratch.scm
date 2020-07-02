@@ -1052,4 +1052,49 @@
     (set-value! y 4 'user)
     (get-value x))))
 
+(define (c+ x y)
+  (let ((z (make-connector)))
+    (adder x y z)
+    z))
+
+(define (c- x y)
+  (let ((z (make-connector)))
+    (adder z y x)
+    z))
+
+(define (c* x y)
+  (let ((z (make-connector)))
+    (multiplier x y z)
+    z))
+
+(define (c/ x y)
+  (let ((z (make-connector)))
+    (multiplier y z x)
+    z))
+
+(define (cv x)
+  (let ((z (make-connector)))
+    (constant x z)
+    z))
+
+(test-group
+ "c+ c* c/ cv"
+ (let ((celsius-fahrenheit-converter
+        (lambda (x)
+          (c+ (c* (c/ (cv 9) (cv 5))
+                  x)
+              (cv 32)))))
+   (test
+    77
+    (let ((c (make-connector)))
+      (let ((f (celsius-fahrenheit-converter c)))
+        (set-value! c 25 'user)
+        (get-value f))))
+   (test
+    100
+    (let ((c (make-connector)))
+      (let ((f (celsius-fahrenheit-converter c)))
+        (set-value! f 212 'user)
+        (get-value c))))))
+
 (define debug #t)
