@@ -1012,4 +1012,44 @@
     (set-value! z 4 'user)
     (get-value y))))
 
+(define (squarer a b)
+  (define (process-new-value)
+    (if (has-value? b)
+        (if (< (get-value b) 0)
+            (error "square less than 0 -- squarer" (get-value b))
+            (set-value! a (sqrt (get-value b)) me))
+        (if (has-value? a)
+            (set-value! b (* (get-value a) (get-value a)) me))))
+  (define (process-forget-value)
+    (forget-value! a me)
+    (forget-value! b me)
+    (process-new-value))
+  (define (me request)
+    (cond ((eq? request 'i-have-a-value)
+           (process-new-value))
+          ((eq? request 'i-lost-my-value)
+           (process-forget-value))
+          (else
+           (error "unknown request -- square" request))))
+  (connect a me)
+  (connect b me)
+  me)
+
+(test-group
+ "squarer"
+ (test
+  16
+  (let ((x (make-connector))
+        (y (make-connector)))
+    (squarer x y)
+    (set-value! x 4 'user)
+    (get-value y)))
+ (test
+  2
+  (let ((x (make-connector))
+        (y (make-connector)))
+    (squarer x y)
+    (set-value! y 4 'user)
+    (get-value x))))
+
 (define debug #t)
