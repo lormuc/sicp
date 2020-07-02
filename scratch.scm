@@ -983,4 +983,33 @@
 (probe "fahrenheit temp" f)
 (set-value! c 25 'user)
 
+(define (averager x y z)
+  (let ((w (make-connector))
+        (two (make-connector)))
+    (adder x y w)
+    (multiplier two z w)
+    (constant 2 two)
+    'ok))
+
+(test-group
+ "averager"
+ (test
+  2
+  (let ((x (make-connector))
+        (y (make-connector))
+        (z (make-connector)))
+    (averager x y z)
+    (set-value! x 1 'user)
+    (set-value! y 3 'user)
+    (get-value z)))
+ (test
+  8
+  (let ((x (make-connector))
+        (y (make-connector))
+        (z (make-connector)))
+    (averager x y z)
+    (set-value! x 0 'user)
+    (set-value! z 4 'user)
+    (get-value y))))
+
 (define debug #t)
