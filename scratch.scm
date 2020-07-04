@@ -1190,4 +1190,49 @@
   (stream-null?
    (stream-x-map - the-empty-stream the-empty-stream))))
 
+(define stream-map stream-x-map)
+
+(define (make-stream . items)
+  (if (null? items)
+      the-empty-stream
+      (cons-stream (car items)
+                   (apply make-stream (cdr items)))))
+
+(define (mul-streams stream-0 stream-1)
+  (stream-map * stream-0 stream-1))
+
+(define (stream-get-items k stream)
+  (if (= k 0)
+      '()
+      (cons (stream-car stream)
+            (stream-get-items (- k 1)
+                              (stream-cdr stream)))))
+
+(test-group
+ "mul-streams"
+ (test
+  the-empty-stream
+  (mul-streams the-empty-stream the-empty-stream))
+ (test
+  '(2 6 12)
+  (stream-get-items
+   3
+   (mul-streams (make-stream 1 2 3)
+                (make-stream 2 3 4)))))
+
+(define (ints-from n)
+  (cons-stream n (ints-from (+ n 1))))
+
+(test-group
+ "stream-get-items"
+ (test
+  '()
+  (stream-get-items 0 (ints-from 0)))
+ (test
+  '(1 2 3 4)
+  (stream-get-items 4 (ints-from 1))))
+
 (define debug #t)
+
+(define factorials
+  (cons-stream 1 (mul-streams factorials (ints-from 2))))
