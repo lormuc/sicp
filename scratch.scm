@@ -1255,5 +1255,23 @@
   '(2 5 9)
   (stream-get-items 3 (partial-sums (make-stream 2 3 4)))))
 
+(define (merge a b)
+  (cond ((stream-null? a) b)
+        ((stream-null? b) a)
+        (else
+         (let ((a-car (stream-car a))
+               (b-car (stream-car b)))
+           (cond ((< a-car b-car)
+                  (cons-stream a-car (merge (stream-cdr a) b)))
+                 ((> a-car b-car)
+                  (cons-stream b-car (merge a (stream-cdr b))))
+                 (else
+                  (cons-stream a-car
+                               (merge (stream-cdr a)
+                                      (stream-cdr b)))))))))
+
+(define (scale-stream stream factor)
+  (stream-map (lambda (x) (* x factor)) stream))
+
 (define debug #t)
 
