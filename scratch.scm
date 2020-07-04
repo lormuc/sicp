@@ -1280,6 +1280,11 @@
               series
               (ints-from 1)))
 
+(define cosine-series
+  (cons-stream 1 (integrate-series (stream-map - sine-series))))
+(define sine-series
+  (cons-stream 0 (integrate-series cosine-series)))
+
 (test-group
  "integrate-series"
  (test
@@ -1291,10 +1296,25 @@
  (test
   '((1 0 -1/2 0 1/24 0 -1/720)
     (0 1 0 -1/6 0 1/120 0))
-  (begin
-    (define cosine-series
-      (cons-stream 1 (integrate-series (stream-map - sine-series))))
-    (define sine-series
-      (cons-stream 0 (integrate-series cosine-series)))
-    (list (stream-get-items 7 cosine-series)
-          (stream-get-items 7 sine-series)))))
+  (list (stream-get-items 7 cosine-series)
+        (stream-get-items 7 sine-series))))
+
+(define (add-streams a b)
+  (stream-map + a b))
+
+(define (mul-series a b)
+  (cons-stream
+   (* (stream-car a) (stream-car b))
+   (add-streams (scale-stream (stream-cdr b)
+                              (stream-car a))
+                (mul-series (stream-cdr a) b))))
+
+(test-group
+ "mul-series"
+ (test
+  '(1 0 0 0)
+  (stream-get-items
+   4
+   (add-streams
+    (mul-series cosine-series cosine-series)
+    (mul-series sine-series sine-series)))))
