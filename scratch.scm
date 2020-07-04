@@ -1318,3 +1318,15 @@
    (add-streams
     (mul-series cosine-series cosine-series)
     (mul-series sine-series sine-series)))))
+
+(define (invert-unit-series series)
+  (assert (= (stream-car series) 1))
+  (cons-stream 1
+               (mul-series (invert-unit-series series)
+                           (stream-map - (stream-cdr series)))))
+
+(test-group
+ "invert-unit-series"
+ (test
+  '(1 -1 0 0)
+  (stream-get-items 4 (invert-unit-series ones))))
