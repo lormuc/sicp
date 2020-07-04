@@ -1330,3 +1330,16 @@
  (test
   '(1 -1 0 0)
   (stream-get-items 4 (invert-unit-series ones))))
+
+(define (div-series a b)
+  (assert (not (= (stream-car b) 0)))
+  (let ((c (/ 1 (stream-car b))))
+    (scale-stream
+     (mul-series a (invert-unit-series (scale-stream b c)))
+     c)))
+
+(test-group
+ "div-series"
+ (test
+  '(0 1 0 1/3 0 2/15)
+  (stream-get-items 6 (div-series sine-series cosine-series))))
