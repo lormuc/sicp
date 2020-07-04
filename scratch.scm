@@ -1377,4 +1377,42 @@
 
 (define debug #t)
 
-(log-line (stream-sqrt 2 0.001))
+(define ln-2-summands
+  (stream-map (lambda (k)
+                (if (= (modulo k 2) 0)
+                    (/ -1.0 k)
+                    (/ 1.0 k)))
+              (ints-from 1)))
+
+(define ln-2-stream
+  (partial-sums ln-2-summands))
+
+(log-line "approximation 0")
+(for-each log-line (stream-get-items 10 ln-2-stream))
+
+(define (euler-transform s)
+  (let ((s0 (stream-ref s 0))
+        (s1 (stream-ref s 1))
+        (s2 (stream-ref s 2)))
+    (cons-stream (- s2 (/ (square (- s2 s1))
+                          (+ s0 (* -2 s1) s2)))
+                 (euler-transform (stream-cdr s)))))
+
+(log-line "approximation 1")
+(for-each log-line
+          (stream-get-items 10 (euler-transform ln-2-stream)))
+
+(define (make-tableau transform s)
+  (cons-stream s
+               (make-tableau transform
+                             (transform s))))
+
+(define (accelerated-sequence transform s)
+  (stream-map stream-car
+              (make-tableau transform s)))
+
+(log-line "approximation 2")
+(for-each log-line
+          (stream-get-items
+           10
+           (accelerated-sequence euler-transform ln-2-stream)))
