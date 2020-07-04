@@ -1273,8 +1273,6 @@
 (define (scale-stream stream factor)
   (stream-map (lambda (x) (* x factor)) stream))
 
-(define debug #t)
-
 (define (integrate-series series)
   (stream-map (lambda (x y) (/ x y))
               series
@@ -1343,3 +1341,40 @@
  (test
   '(0 1 0 1/3 0 2/15)
   (stream-get-items 6 (div-series sine-series cosine-series))))
+
+(define (stream-limit stream tolerance)
+  (let ((elt (stream-car stream))
+        (next (stream-car (stream-cdr stream))))
+    (if (< (abs (- elt next)) tolerance)
+        next
+        (stream-limit (stream-cdr stream) tolerance))))
+
+(test-group
+ "stream-limit"
+ (test
+  1
+  (stream-limit (make-stream 0 1) 2))
+ (test
+  2
+  (stream-limit (make-stream 0 3 7 4 2) 3)))
+
+(define (average x y)
+  (/ (+ x y) 2))
+
+(define (sqrt-improve guess x)
+  (average guess (/ x guess)))
+
+(define (sqrt-stream x)
+  (define guesses
+    (cons-stream 1.0
+                 (stream-map (lambda (guess)
+                               (sqrt-improve guess x))
+                             guesses)))
+  guesses)
+
+(define (stream-sqrt x tolerance)
+  (stream-limit (sqrt-stream x) tolerance))
+
+(define debug #t)
+
+(log-line (stream-sqrt 2 0.001))
