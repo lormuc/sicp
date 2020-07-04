@@ -1232,7 +1232,28 @@
   '(1 2 3 4)
   (stream-get-items 4 (ints-from 1))))
 
+(define ones (cons-stream 1 ones))
+
+(define (partial-sums stream)
+  (if (stream-null? stream)
+      the-empty-stream
+      (cons-stream
+       (stream-car stream)
+       (stream-map (lambda (x)
+                     (+ (stream-car stream) x))
+                   (partial-sums (stream-cdr stream))))))
+
+(test-group
+ "partial-sums"
+ (test
+  '(1 2 3)
+  (stream-get-items 3 (partial-sums ones)))
+ (test
+  '(1 3 6)
+  (stream-get-items 3 (partial-sums (ints-from 1))))
+ (test
+  '(2 5 9)
+  (stream-get-items 3 (partial-sums (make-stream 2 3 4)))))
+
 (define debug #t)
 
-(define factorials
-  (cons-stream 1 (mul-streams factorials (ints-from 2))))
