@@ -1275,3 +1275,26 @@
 
 (define debug #t)
 
+(define (integrate-series series)
+  (stream-map (lambda (x y) (/ x y))
+              series
+              (ints-from 1)))
+
+(test-group
+ "integrate-series"
+ (test
+  '(1 1 1/2 1/6 1/24)
+  (begin
+    (define exp-series
+      (cons-stream 1 (integrate-series exp-series)))
+    (stream-get-items 5 exp-series)))
+ (test
+  '((1 0 -1/2 0 1/24 0 -1/720)
+    (0 1 0 -1/6 0 1/120 0))
+  (begin
+    (define cosine-series
+      (cons-stream 1 (integrate-series (stream-map - sine-series))))
+    (define sine-series
+      (cons-stream 0 (integrate-series cosine-series)))
+    (list (stream-get-items 7 cosine-series)
+          (stream-get-items 7 sine-series)))))
