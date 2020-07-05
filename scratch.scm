@@ -1452,29 +1452,29 @@
    (weighted-pairs nats nats
                    (lambda (p) (+ (car p) (cadr p)))))))
 
+(define (cube x) (* x x x))
+
+(define (ramanujan-weight p)
+  (+ (cube (car p)) (cube (cadr p))))
+
+(define (find-ramanujan-numbers stream)
+  (let ((n (ramanujan-weight (stream-car stream)))
+        (m (ramanujan-weight (stream-car (stream-cdr stream)))))
+    (if (= n m)
+        (cons-stream
+         n
+         (find-ramanujan-numbers
+          (stream-filter (lambda (p)
+                           (not (= (ramanujan-weight p) n)))
+                         (stream-cdr (stream-cdr stream)))))
+        (find-ramanujan-numbers (stream-cdr stream)))))
+
+(define ramanujan-pairs
+  (weighted-pairs nats nats ramanujan-weight))
+
+(define ramanujan-numbers
+  (find-ramanujan-numbers ramanujan-pairs))
+
 (define debug #t)
 
-(log-line
- (stream-get-items
-  12
-  (weighted-pairs nats nats (lambda (p) (+ (car p) (cadr p))))))
-
-(log-line
- (stream-get-items
-  10
-  (stream-filter
-   (lambda (p)
-     (let ((i (car p))
-           (j (cadr p)))
-       (and (not (= (modulo i 2) 0))
-            (not (= (modulo i 3) 0))
-            (not (= (modulo i 5) 0))
-            (not (= (modulo j 2) 0))
-            (not (= (modulo j 3) 0))
-            (not (= (modulo j 5) 0)))))
-   (weighted-pairs
-    nats nats
-    (lambda (p)
-      (let ((i (car p))
-            (j (cadr p)))
-        (+ (* 2 i) (* 3 j) (* 5 i j))))))))
+(log-line (stream-get-items 6 ramanujan-numbers))
