@@ -1382,13 +1382,99 @@
                    (interleave t (stream-cdr s)))))
 
 (define (pairs s t)
-  (interleave
-   (stream-map (lambda (x) (list (stream-car s) x))
-               t)
-   (pairs (stream-cdr s) (stream-cdr t))))
+  (cons-stream
+   (list (stream-car s) (stream-car t))
+   (interleave
+    (stream-map (lambda (x) (list (stream-car s) x))
+                (stream-cdr t))
+    (pairs (stream-cdr s) (stream-cdr t)))))
 
 (define nats (ints-from 0))
 
+(define (merge-weighted a b weight)
+  (cond ((stream-null? a) b)
+        ((stream-null? b) a)
+        (else
+         (let ((a-w (weight (stream-car a)))
+               (b-w (weight (stream-car b))))
+           (cond ((< a-w b-w)
+                  (cons-stream (stream-car a)
+                               (merge-weighted (stream-cdr a) b weight)))
+                 ((> a-w b-w)
+                  (cons-stream (stream-car b)
+                               (merge-weighted a (stream-cdr b) weight)))
+                 (else
+                  (cons-stream
+                   (stream-car a)
+                   (cons-stream
+                    (stream-car b)
+                    (merge-weighted (stream-cdr a)
+                                    (stream-cdr b) weight)))))))))
+
+(test-group
+ "merge-weighted"
+ (test
+  '(0 1 2 3 4 5)
+  (stream-get-items
+   6
+   (merge-weighted (make-stream 0 1 2)
+                   (make-stream 3 4 5)
+                   (lambda (x) x))))
+ (test
+  '(4 3 2 1)
+  (stream-get-items
+   4
+   (merge-weighted (make-stream 2 1)
+                   (make-stream 4 3)
+                   (lambda (x) (- x)))))
+ (test
+  '(1 1 0 -1)
+  (stream-get-items
+   4
+   (merge-weighted (make-stream 1 0) (make-stream 1 -1)
+                   (lambda (x) (- x))))))
+
+(define (weighted-pairs s t weight)
+  (cons-stream
+   (list (stream-car s) (stream-car t))
+   (merge-weighted
+    (stream-map (lambda (x) (list (stream-car s) x))
+                (stream-cdr t))
+    (weighted-pairs (stream-cdr s) (stream-cdr t) weight)
+    weight)))
+
+(test-group
+ "weighted-pairs"
+ (test
+  '((0 0) (0 1) (0 2) (1 1) (0 3) (1 2))
+  (stream-get-items
+   6
+   (weighted-pairs nats nats
+                   (lambda (p) (+ (car p) (cadr p)))))))
+
 (define debug #t)
 
-(log-line (stream-get-items 5 (pairs nats nats)))
+(log-line
+ (stream-get-items
+  12
+  (weighted-pairs nats nats (lambda (p) (+ (car p) (cadr p))))))
+
+(log-line
+ (stream-get-items
+  10
+  (stream-filter
+   (lambda (p)
+     (let ((i (car p))
+           (j (cadr p)))
+       (and (not (= (modulo i 2) 0))
+            (not (= (modulo i 3) 0))
+            (not (= (modulo i 5) 0))
+            (not (= (modulo j 2) 0))
+            (not (= (modulo j 3) 0))
+            (not (= (modulo j 5) 0)))))
+   (weighted-pairs
+    nats nats
+    (lambda (p)
+      (let ((i (car p))
+            (j (cadr p)))
+        (+ (* 2 i) (* 3 j) (* 5 i j))))))))
