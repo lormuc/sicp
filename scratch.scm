@@ -1202,8 +1202,8 @@
   (stream-map * stream-0 stream-1))
 
 (define (stream-get-items k stream)
-  (if (= k 0)
-      '()
+  (if (= k 1)
+      (list (stream-car stream))
       (cons (stream-car stream)
             (stream-get-items (- k 1)
                               (stream-cdr stream)))))
@@ -1226,8 +1226,8 @@
 (test-group
  "stream-get-items"
  (test
-  '()
-  (stream-get-items 0 (ints-from 0)))
+  '(0)
+  (stream-get-items 1 (ints-from 0)))
  (test
   '(1 2 3 4)
   (stream-get-items 4 (ints-from 1))))
@@ -1488,7 +1488,26 @@
      (scale-stream i r)
      (integral (scale-stream i (/ 1.0 c)) v-0 dt))))
 
-(define debug #t)
+(define (sign-change-detector new-value old-value)
+  (if (and (>= new-value 0) (< old-value 0))
+      1
+      (if (and (< new-value 0) (>= old-value 0))
+          -1
+          0)))
 
-(for-each log-line
-          (stream-get-items 10 ((rc 5 1 0.5) ones 0)))
+(define (make-zero-crossings input-stream last-value last-input)
+  (let ((avpt (/ (+ (stream-car input-stream) last-input) 2)))
+    (cons-stream (sign-change-detector avpt last-value)
+                 (make-zero-crossings (stream-cdr input-stream)
+                                      avpt
+                                      (stream-car input-stream)))))
+
+(test-group
+ "make-zero-crossings"
+ (test
+  '(0 0 1)
+  (stream-get-items
+   3
+   (make-zero-crossings (make-stream -8 0 2) -8 -8))))
+
+(define debug #t)
