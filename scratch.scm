@@ -1475,6 +1475,20 @@
 (define ramanujan-numbers
   (find-ramanujan-numbers ramanujan-pairs))
 
+(define (integral integrand initial-value dt)
+  (define int
+    (cons-stream initial-value
+                 (add-streams (scale-stream integrand dt)
+                              int)))
+  int)
+
+(define (rc r c dt)
+  (lambda (i v-0)
+    (add-streams
+     (scale-stream i r)
+     (integral (scale-stream i (/ 1.0 c)) v-0 dt))))
+
 (define debug #t)
 
-(log-line (stream-get-items 6 ramanujan-numbers))
+(for-each log-line
+          (stream-get-items 10 ((rc 5 1 0.5) ones 0)))
