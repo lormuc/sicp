@@ -1555,8 +1555,6 @@
    (stream-ref (solve (lambda (y) y) 1 0.001) 1000)
    0.1)))
 
-(define debug #t)
-
 (define integral delayed-integral)
 
 (define (solve-2nd a b dt y0 dy0)
@@ -1567,4 +1565,10 @@
                  (scale-stream y b)))
   y)
 
-(log-line (stream-get-items 10 (solve-2nd 1 1 0.1 1 1)))
+(define (general-solve-2nd f dt y0 dy0)
+  (define y (integral (delay dy) y0 dt))
+  (define dy (integral (delay ddy) dy0 dt))
+  (define ddy (stream-map f dy y))
+  y)
+
+(define debug #t)
