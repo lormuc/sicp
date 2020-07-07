@@ -1529,9 +1529,30 @@
   (stream-map sign-change-detector input-stream
               (cons-stream 0 input-stream)))
 
-(define debug #t)
+(define (delayed-integral integrand initial-value dt)
+  (cons-stream initial-value
+               (let ((integrand (force integrand)))
+                 (if (stream-null? integrand)
+                     the-empty-stream
+                     (delayed-integral (delay (stream-cdr integrand))
+                                       (+ (* dt (stream-car integrand))
+                                          initial-value)
+                                       dt)))))
 
-(log-line
- (stream-get-items 6
-                   (make-zero-crossings-with-map
-                    (smooth (make-stream 0 1 -3 -5 -1 0 2)))))
+(define (solve f y0 dt)
+  (define y (delayed-integral (delay dy) y0 dt))
+  (define dy (stream-map f y))
+  y)
+
+(define (close? a b e)
+  (< (abs (- a b)) e))
+
+(test-group
+ "delayed-integral"
+ (test-assert
+  (close?
+   2.7
+   (stream-ref (solve (lambda (y) y) 1 0.001) 1000)
+   0.1)))
+
+(define debug #t)
