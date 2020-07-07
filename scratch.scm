@@ -1611,4 +1611,45 @@
                  '(reset 7)
                  'generate)))))
 
+(define (monte-carlo experiment-stream passed failed)
+  (define (next passed failed)
+    (cons-stream
+     (/ passed (+ passed failed))
+     (monte-carlo
+      (stream-cdr experiment-stream) passed failed)))
+  (if (stream-car experiment-stream)
+      (next (+ passed 1) failed)
+      (next passed (+ failed 1))))
+
+(define (stream-random-in-range low high)
+  (cons-stream
+   (random-in-range low high)
+   (stream-random-in-range low high)))
+
+(define (stream-estimate-integral p x1 x2 y1 y2)
+  (let ((random-x (stream-random-in-range x1 x2))
+        (random-y (stream-random-in-range y1 y2))
+        (rectangle-area (* (- x2 x1) (- y2 y1))))
+    (let ((experiments (stream-map p random-x random-y)))
+      (scale-stream (monte-carlo experiments 0 0)
+                    rectangle-area))))
+
+(test-group
+ "stream-estimate-integral"
+ (test-assert (close? 1
+                      (stream-ref
+                       (stream-estimate-integral
+                        (lambda (x y) true)
+                        0 1 0 1)
+                       1000)
+                      0.1))
+ (test-assert (close? 3.14
+                      (stream-ref
+                       (stream-estimate-integral
+                        (lambda (x y)
+                          (<= (+ (* x x) (* y y)) 1))
+                        -1 1 -1 1)
+                       1000)
+                      0.1)))
+
 (define debug #t)
