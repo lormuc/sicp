@@ -1581,10 +1581,34 @@
                    (scale-stream il (/ (- r) l))))
     (cons vc il)))
 
-(define debug #t)
+(define (rand-stream-helper update state commands)
+  (let ((command (stream-car commands)))
+    (let ((value
+           (cond ((eq? command 'generate) state)
+                 ((and (pair? command)
+                       (eq? (car command) 'reset))
+                  (cadr command))
+                 (else (error "unknown command -- rand-stream"
+                              command)))))
+      (cons-stream
+       value
+       (rand-stream-helper
+        update (update value) (stream-cdr commands))))))
 
-(let ((t ((rlc 1 1 0.2 0.1) 10 0)))
-  (let ((x (car t))
-        (y (cdr t)))
-    (log-line (stream-get-items 6 x))
-    (log-line (stream-get-items 6 y))))
+(define (rand-stream commands)
+  (rand-stream-helper (lambda (x) (+ x 1)) 0 commands))
+
+(test-group
+ "rand-stream"
+ (test
+  '(0 1 2 7 8)
+  (stream-get-items
+   5
+   (rand-stream
+    (make-stream 'generate
+                 'generate
+                 'generate
+                 '(reset 7)
+                 'generate)))))
+
+(define debug #t)
