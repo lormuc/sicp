@@ -1571,4 +1571,20 @@
   (define ddy (stream-map f dy y))
   y)
 
+(define (rlc r l c dt)
+  (lambda (vc0 il0)
+    (define vc (integral (delay dvc) vc0 dt))
+    (define il (integral (delay dil) il0 dt))
+    (define dvc (scale-stream il (/ -1 c)))
+    (define dil
+      (add-streams (scale-stream vc (/ 1 l))
+                   (scale-stream il (/ (- r) l))))
+    (cons vc il)))
+
 (define debug #t)
+
+(let ((t ((rlc 1 1 0.2 0.1) 10 0)))
+  (let ((x (car t))
+        (y (cdr t)))
+    (log-line (stream-get-items 6 x))
+    (log-line (stream-get-items 6 y))))
