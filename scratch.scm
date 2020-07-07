@@ -1510,4 +1510,28 @@
    3
    (make-zero-crossings (make-stream -8 0 2) -8 -8))))
 
+(define (smooth stream)
+  (cons-stream
+   (average (stream-car stream)
+            (stream-car (stream-cdr stream)))
+   (smooth (stream-cdr stream))))
+
+(test-group
+ "smooth"
+ (test
+  '(1 3 5)
+  (stream-get-items 3 (smooth (make-stream 0 2 4 6))))
+ (test
+  '(2 4 6 8)
+  (stream-get-items 4 (smooth (make-stream 1 3 5 7 9)))))
+
+(define (make-zero-crossings-with-map input-stream)
+  (stream-map sign-change-detector input-stream
+              (cons-stream 0 input-stream)))
+
 (define debug #t)
+
+(log-line
+ (stream-get-items 6
+                   (make-zero-crossings-with-map
+                    (smooth (make-stream 0 1 -3 -5 -1 0 2)))))
