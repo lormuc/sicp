@@ -318,6 +318,18 @@
 
 (define the-global-environment (setup-environment))
 
-(define debug #t)
+(define (application? exp) (tagged-list? exp 'call))
+(define (operator exp) (cadr exp))
+(define (operands exp) (cddr exp))
 
-(log-line (eval '(+ 3 4) the-global-environment))
+(test-group
+ "procedure-call-begins-with-call"
+ (test-error (eval '(+ 1 2) (setup-environment)))
+ (test 3 (eval '(call + 1 2) (setup-environment)))
+ (test 'a (eval '(call car (call cons 'a 'b)) (setup-environment))))
+
+(define (application? exp) (pair? exp))
+(define (operator exp) (car exp))
+(define (operands exp) (cdr exp))
+
+(define debug #t)
