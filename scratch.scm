@@ -259,6 +259,16 @@
 
 (put 'eval 'cond eval-cond)
 
+(define (let->combination exp)
+  (let ((bindings (cadr exp))
+        (body (cddr exp)))
+    (let ((vars (map car bindings))
+          (exps (map cadr bindings)))
+      (cons (make-lambda vars body) exps))))
+(put 'eval 'let
+     (lambda (exp env)
+       (eval (let->combination exp) env)))
+
 ;;;section 4.1.3
 
 (define (true? x)
@@ -465,6 +475,38 @@
                (#f => 1)
                ((cons 2 3) => cdr)
                (else 2))
+        (setup-environment))))
+
+(test-group
+ "let->combination"
+ (test
+  '((lambda ()))
+  (let->combination '(let ())))
+ (test
+  '((lambda (a) c d) b)
+  (let->combination '(let ((a b)) c d)))
+ (test
+  '((lambda (a) c d) b)
+  (let->combination '(let ((a b)) c d)))
+ (test
+  '((lambda (a c) e f) b d)
+  (let->combination '(let ((a b) (c d)) e f))))
+
+(test-group
+ "let"
+ (test
+  0
+  (eval '(let ((x 0)) x)
+        (setup-environment)))
+ (test
+  4
+  (eval '(let ((x 0) (y (+ 1 3))) (+ x y))
+        (setup-environment)))
+ (test
+  0
+  (eval '(begin (define x 0)
+                (let () (define x 1))
+                x)
         (setup-environment))))
 
 (define debug #t)
