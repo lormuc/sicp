@@ -15,25 +15,51 @@
 
 ;;;section 4.1.1
 
+(define (make-table)
+  (let ((local-table (list '*table*)))
+    (define (lookup key-1 key-2)
+      (let ((subtable (assoc key-1 (cdr local-table))))
+        (if subtable
+            (let ((record (assoc key-2 (cdr subtable))))
+              (if record
+                  (cdr record)
+                  false))
+            false)))
+    (define (insert! key-1 key-2 value)
+      (let ((subtable (assoc key-1 (cdr local-table))))
+        (if subtable
+            (let ((record (assoc key-2 (cdr subtable))))
+              (if record
+                  (set-cdr! record value)
+                  (set-cdr! subtable
+                            (cons (cons key-2 value)
+                                  (cdr subtable)))))
+            (set-cdr! local-table
+                      (cons (list key-1
+                                  (cons key-2 value))
+                            (cdr local-table)))))
+      'ok)
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup)
+            ((eq? m 'insert-proc!) insert!)
+            (else (error "unknown operation -- table" m))))
+    dispatch))
+
+(define operation-table (make-table))
+(define get (operation-table 'lookup-proc))
+(define put (operation-table 'insert-proc!))
+
 (define (eval exp env)
   (cond ((self-evaluating? exp) exp)
         ((variable? exp) (lookup-variable-value exp env))
-        ((quoted? exp) (text-of-quotation exp))
-        ((assignment? exp) (eval-assignment exp env))
-        ((definition? exp) (eval-definition exp env))
-        ((if? exp) (eval-if exp env))
-        ((lambda? exp)
-         (make-procedure (lambda-parameters exp)
-                         (lambda-body exp)
-                         env))
-        ((begin? exp)
-         (eval-sequence (begin-actions exp) env))
-        ((cond? exp) (eval (cond->if exp) env))
-        ((application? exp)
-         (apply (eval (operator exp) env)
-                (list-of-values (operands exp) env)))
         (else
-         (error "unknown expression type -- eval" exp))))
+         (let ((proc (get 'eval (car exp))))
+           (if proc
+               (proc exp env)
+               (if (application? exp)
+                   (apply (eval (operator exp) env)
+                          (list-of-values (operands exp) env))
+                   (error "unknown expression type -- eval" exp)))))))
 
 (define (apply procedure arguments)
   (cond ((primitive-procedure? procedure)
@@ -78,11 +104,27 @@
     env)
   'ok)
 
+(put 'eval 'quote
+     (lambda (exp env) (text-of-quotation exp)))
+(put 'eval 'set! eval-assignment)
+(put 'eval 'define eval-definition)
+(put 'eval 'if eval-if)
+(put 'eval 'lambda
+     (lambda (exp env)
+       (make-procedure (lambda-parameters exp)
+                       (lambda-body exp)
+                       env)))
+(put 'eval 'begin
+     (lambda (exp env)
+       (eval-sequence (begin-actions exp) env)))
+(put 'eval 'cond (lambda (exp env) (eval (cond->if exp) env)))
+
 ;;;section 4.1.2
 
 (define (self-evaluating? exp)
   (cond ((number? exp) true)
         ((string? exp) true)
+        ((boolean? exp) true)
         (else false)))
 
 (define (quoted? exp)
@@ -302,7 +344,8 @@
         (list 'cdr cdr)
         (list 'cons cons)
         (list 'null? null?)
-        (list '+ +)))
+        (list '+ +)
+        (list '* *)))
 
 (define (primitive-procedure-names)
   (map car
@@ -331,5 +374,12 @@
 (define (application? exp) (pair? exp))
 (define (operator exp) (car exp))
 (define (operands exp) (cdr exp))
+
+(test-group
+ "eval"
+ (test 29 (eval '(+ (* 1 2) (* 3 (+ 4 5)))
+                (setup-environment)))
+ (test 2 (eval '(if (null? 0) 1 2) (setup-environment)))
+ (test 3 (eval '(begin 0 1 2 3) (setup-environment))))
 
 (define debug #t)
