@@ -259,12 +259,40 @@
 
 (put 'eval 'cond eval-cond)
 
+(define (let-named? exp)
+  (symbol? (cadr exp)))
+
+(define (let-body exp)
+  (if (let-named? exp)
+      (cdddr exp)
+      (cddr exp)))
+
+(define (let-bindings exp)
+  (if (let-named? exp)
+      (caddr exp)
+      (cadr exp)))
+
+(define (let-name exp)
+  (cadr exp))
+
+(define (make-application proc args)
+  (cons proc args))
+
+(define (make-define name value)
+  (list 'define name value))
+
 (define (let->combination exp)
-  (let ((bindings (cadr exp))
-        (body (cddr exp)))
+  (let ((bindings (let-bindings exp))
+        (body (let-body exp)))
     (let ((vars (map car bindings))
           (exps (map cadr bindings)))
-      (cons (make-lambda vars body) exps))))
+      (if (let-named? exp)
+          (let ((name (let-name exp)))
+            `((lambda ()
+                (define ,name (lambda ,vars ,@body))
+                (,name ,@exps))))
+          `((lambda ,vars ,@body) ,@exps)))))
+
 (put 'eval 'let
      (lambda (exp env)
        (eval (let->combination exp) env)))
@@ -395,7 +423,9 @@
         (list 'cons cons)
         (list 'null? null?)
         (list '+ +)
-        (list '* *)))
+        (list '* *)
+        (list '= =)
+        (list '- -)))
 
 (define (primitive-procedure-names)
   (map car
@@ -550,5 +580,41 @@
                 (z (+ x y 5)))
            (* x z))
         (setup-environment))))
+
+(test-group
+ "let->combination named"
+ (test
+  '((lambda ()
+      (define f (lambda (v0 v1) body))
+      (f e0 e1)))
+  (let->combination '(let f ((v0 e0) (v1 e1)) body))))
+
+(test-group
+ "let named"
+ (test
+  3
+  (eval
+   '(let g ((n 2))
+      (if (= n 0)
+          3
+          (g (- n 1))))
+   (setup-environment)))
+ (test
+  8
+  (eval
+   '(let fib-iter ((a 1) (b 0) (count 6))
+      (if (= count 0)
+          b
+          (fib-iter (+ a b)
+                    a
+                    (- count 1))))
+   (setup-environment)))
+ (test
+  0
+  (eval
+   '(let ((x 0))
+      (let x ((y 0)) 0)
+      (+ x 0))
+   (setup-environment))))
 
 (define debug #t)
