@@ -75,6 +75,46 @@
        (eval-sequence (begin-actions exp) env)))
 (put 'eval 'cond (lambda (exp env) (eval (cond->if exp) env)))
 
+(define (eval-and exp env)
+  (define (loop args)
+    (if (null? args)
+        #t
+        (let ((value (eval (car args) env)))
+          (if (true? value)
+              (if (null? (cdr args))
+                  value
+                  (loop (cdr args)))
+              #f))))
+  (loop (cdr exp)))
+
+(put 'eval 'and eval-and)
+
+(define (expand-and exp)
+  (define (loop args)
+    (if (null? args)
+        #t
+        (if (null? (cdr args))
+            (car args)
+            (list 'if (car args)
+                  (loop (cdr args))
+                  #f))))
+  (loop (cdr exp)))
+
+(put 'eval 'and
+     (lambda (exp env)
+       (eval (expand-and exp) env)))
+
+(define (eval-or exp env)
+  (define (loop args)
+    (if (null? args)
+        #f
+        (let ((value (eval (car args) env)))
+          (if (true? value)
+              value
+              (loop (cdr args))))))
+  (loop (cdr exp)))
+(put 'eval 'or eval-or)
+
 ;;;section 4.1.2
 
 (define (self-evaluating? exp)
@@ -337,5 +377,35 @@
                 (setup-environment)))
  (test 2 (eval '(if (null? 0) 1 2) (setup-environment)))
  (test 3 (eval '(begin 0 1 2 3) (setup-environment))))
+
+(test-group
+ "and"
+ (test #t (eval '(and) (setup-environment)))
+ (test #f (eval '(and #f) (setup-environment)))
+ (test 1 (eval '(and 1) (setup-environment)))
+ (test 3 (eval '(and #t 3) (setup-environment)))
+ (test 0 (eval '(begin (define x 0)
+                       (and #f (set! x 1))
+                       x) (setup-environment))))
+
+(test-group
+ "or"
+ (test #f (eval '(or) (setup-environment)))
+ (test #f (eval '(or #f) (setup-environment)))
+ (test 1 (eval '(or 1) (setup-environment)))
+ (test #t (eval '(or #t 3) (setup-environment)))
+ (test 0 (eval '(begin (define x 0)
+                       (or #t (set! x 1))
+                       x) (setup-environment))))
+
+(test-group
+ "expand-and"
+ (test #t (expand-and '(and)))
+ (test
+  '(if 0 1 #f)
+  (expand-and '(and 0 1)))
+ (test
+  '(if 0 (if 1 2 #f) #f)
+  (expand-and '(and 0 1 2))))
 
 (define debug #t)
