@@ -269,6 +269,25 @@
      (lambda (exp env)
        (eval (let->combination exp) env)))
 
+(define (make-let* bindings body)
+  (cons 'let* (cons bindings body)))
+
+(define (make-let bindings body)
+  (cons 'let (cons bindings body)))
+
+(define (let*->nested-lets exp)
+  (let ((bindings (cadr exp))
+        (body (cddr exp)))
+    (if (null? (cdr bindings))
+        (make-let bindings body)
+        (make-let (list (car bindings))
+                  (list (let*->nested-lets
+                         (make-let* (cdr bindings)
+                                    body)))))))
+
+(put 'eval 'let*
+     (lambda (exp env) (eval (let*->nested-lets exp) env)))
+
 ;;;section 4.1.3
 
 (define (true? x)
@@ -507,6 +526,29 @@
   (eval '(begin (define x 0)
                 (let () (define x 1))
                 x)
+        (setup-environment))))
+
+(test-group
+ "let*->nested-lets"
+ (test
+  '(let ((x 3))
+     (let ((y (+ x 2)))
+       (let ((z (+ x y 5)))
+         (* x z))))
+  (let*->nested-lets
+   '(let* ((x 3)
+           (y (+ x 2))
+           (z (+ x y 5)))
+      (* x z)))))
+
+(test-group
+ "let*"
+ (test
+  39
+  (eval '(let* ((x 3)
+                (y (+ x 2))
+                (z (+ x y 5)))
+           (* x z))
         (setup-environment))))
 
 (define debug #t)
