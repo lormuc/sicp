@@ -73,7 +73,6 @@
 (put 'eval 'begin
      (lambda (exp env)
        (eval-sequence (begin-actions exp) env)))
-(put 'eval 'cond (lambda (exp env) (eval (cond->if exp) env)))
 
 (define (eval-and exp env)
   (define (loop args)
@@ -233,6 +232,32 @@
             (make-if (cond-predicate first)
                      (sequence->exp (cond-actions first))
                      (expand-clauses rest))))))
+
+(define (eval-cond exp env)
+  (define (arrow-clause? clause)
+    (eq? (cadr clause) '=>))
+  (define (arrow-clause-recipient clause)
+    (caddr clause))
+  (define (loop clauses)
+    (if (null? clauses)
+        (eval 'false env)
+        (let ((first (car clauses))
+              (rest (cdr clauses)))
+          (let ((predicate-value
+                 (eval (if (cond-else-clause? first)
+                           'true
+                           (cond-predicate first))
+                       env)))
+            (if (true? predicate-value)
+                (if (arrow-clause? first)
+                    (let ((recipient
+                           (eval (arrow-clause-recipient first) env)))
+                      (apply recipient (list predicate-value)))
+                    (eval (sequence->exp (cond-actions first)) env))
+                (loop rest))))))
+  (loop (cond-clauses exp)))
+
+(put 'eval 'cond eval-cond)
 
 ;;;section 4.1.3
 
@@ -407,5 +432,39 @@
  (test
   '(if 0 (if 1 2 #f) #f)
   (expand-and '(and 0 1 2))))
+
+(test-group
+ "cond"
+ (test
+  3
+  (eval '(cond (#f 1)
+               (#f 2)
+               (0 3))
+        (setup-environment)))
+ (test
+  2
+  (eval '(cond (#f x)
+               (#f y)
+               (else 2))
+        (setup-environment)))
+ (test
+  0
+  (eval '(cond ((+ 2 3) 0)
+               (else 1))
+        (setup-environment))))
+
+(test-group
+ "cond =>"
+ (test
+  0
+  (eval '(cond ((cons 0 1) => car))
+        (setup-environment)))
+ (test
+  3
+  (eval '(cond (#f 0)
+               (#f => 1)
+               ((cons 2 3) => cdr)
+               (else 2))
+        (setup-environment))))
 
 (define debug #t)
