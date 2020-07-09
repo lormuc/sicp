@@ -347,6 +347,11 @@
 (put 'eval 'while
      (lambda (exp env) (eval (expand-while exp) env)))
 
+(put 'eval 'make-unbound!
+     (lambda (exp env)
+       (frame-delete-binding! (first-frame env)
+                              (cadr exp))))
+
 ;;;section 4.1.3
 
 (define (true? x)
@@ -426,6 +431,23 @@
       (if (null? vals)
           (add-binding-to-frame! var val frame)
           (set-car! vals val)))))
+
+(define (frame-delete-binding! frame var)
+  (define (loop vars vals)
+    (cond ((null? (cdr vars)) #f)
+          ((eq? (cadr vars) var)
+           (set-cdr! vars (cddr vars))
+           (set-cdr! vals (cddr vals))
+           #t)
+          (else (loop (cdr vars) (cdr vals)))))
+  (let ((vars (car frame))
+        (vals (cdr frame)))
+    (cond ((null? vars) #f)
+          ((eq? (car vars) var)
+           (set-car! frame (cdr vars))
+           (set-cdr! frame (cdr vals))
+           #t)
+          (else (loop vars vals)))))
 
 ;;;section 4.1.4
 
@@ -707,6 +729,50 @@
                   (set! s (+ s i))
                   (set! i (+ i 1)))
            s)
+   (setup-environment))))
+
+(test-group
+ "frame-delete-binding"
+ (test
+  #f
+  (let ((frame (make-frame '() '())))
+    (frame-delete-binding! frame 'a)))
+ (test
+  '(() ())
+  (let ((frame (make-frame '(x) '(0))))
+    (frame-delete-binding! frame 'x)
+    (list (frame-variables frame) (frame-values frame))))
+ (test
+  '((y z) (4 5))
+  (let ((frame (make-frame '(x y z) '(3 4 5))))
+    (frame-delete-binding! frame 'x)
+    (list (frame-variables frame) (frame-values frame))))
+ (test
+  '((x z) (3 5))
+  (let ((frame (make-frame '(x y z) '(3 4 5))))
+    (frame-delete-binding! frame 'y)
+    (list (frame-variables frame) (frame-values frame))))
+ (test
+  '((x y) (3 4))
+  (let ((frame (make-frame '(x y z) '(3 4 5))))
+    (frame-delete-binding! frame 'z)
+    (list (frame-variables frame) (frame-values frame)))))
+
+(test-group
+ "make-unbound!"
+ (test
+  0
+  (eval
+   '(let ((x 0))
+      (let ((x 1))
+        (make-unbound! x)
+        x))
+   (setup-environment)))
+ (test-error
+  (eval
+   '(let ((a 3))
+      (make-unbound! a)
+      a)
    (setup-environment))))
 
 (define debug #t)
