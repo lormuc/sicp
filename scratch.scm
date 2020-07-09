@@ -316,6 +316,37 @@
 (put 'eval 'let*
      (lambda (exp env) (eval (let*->nested-lets exp) env)))
 
+(define (expand-for exp)
+  (assert (eq? 'do (cadddr exp)))
+  (let ((var (cadr exp))
+        (limit (caddr exp))
+        (body (cddddr exp)))
+    `(let ((body (lambda (,var) ,@body)))
+       (define (loop i)
+         (if (= i ,limit)
+             #f
+             (begin (body i)
+                    (loop (+ i 1)))))
+       (loop 0))))
+
+(put 'eval 'for
+     (lambda (exp env) (eval (expand-for exp) env)))
+
+(define (expand-while exp)
+  (assert (eq? 'do (caddr exp)))
+  (let ((condition (cadr exp))
+        (body (cdddr exp)))
+    `(let ((body (lambda () ,@body))
+           (condition (lambda () ,condition)))
+       (define (loop)
+         (if (condition)
+             (begin (body)
+                    (loop))))
+       (loop))))
+
+(put 'eval 'while
+     (lambda (exp env) (eval (expand-while exp) env)))
+
 ;;;section 4.1.3
 
 (define (true? x)
@@ -425,7 +456,9 @@
         (list '+ +)
         (list '* *)
         (list '= =)
-        (list '- -)))
+        (list '- -)
+        (list '< <)
+        (list '> >)))
 
 (define (primitive-procedure-names)
   (map car
@@ -615,6 +648,70 @@
    '(let ((x 0))
       (let x ((y 0)) 0)
       (+ x 0))
+   (setup-environment))))
+
+(test-group
+ "expand-for"
+ (test
+  '(let ((body (lambda (i) x y)))
+     (define (loop i)
+       (if (= i 10)
+           #f
+           (begin (body i)
+                  (loop (+ i 1)))))
+     (loop 0))
+  (expand-for '(for i 10 do
+                    x y)))
+ (test
+  '(let ((body (lambda (x) #f)))
+     (define (loop i)
+       (if (= i y)
+           #f
+           (begin (body i)
+                  (loop (+ i 1)))))
+     (loop 0))
+  (expand-for '(for x y do #f))))
+
+(test-group
+ "for"
+ (test
+  0
+  (eval
+   '(begin (define x 0)
+           (for x 10 do #f)
+           x)
+   (setup-environment)))
+ (test
+  45
+  (eval
+   '(let ((s 0))
+      (for i 10 do (set! s (+ s i)))
+      s)
+   (setup-environment))))
+
+(test-group
+ "expand-while"
+ (test
+  '(let ((body (lambda () b c))
+         (condition (lambda () a)))
+     (define (loop)
+       (if (condition)
+           (begin (body)
+                  (loop))))
+     (loop))
+  (expand-while '(while a do b c))))
+
+(test-group
+ "while"
+ (test
+  45
+  (eval
+   '(begin (define i 0)
+           (define s 0)
+           (while (< i 10) do
+                  (set! s (+ s i))
+                  (set! i (+ i 1)))
+           s)
    (setup-environment))))
 
 (define debug #t)
