@@ -1,3 +1,4 @@
+(import trace)
 (load "prelude.scm")
 
 ;;;from section 4.1.4 -- must precede def of metacircular apply
@@ -6,6 +7,7 @@
 ;;;section 4.1.1
 
 (define (eval exp env)
+  (log-line "eval" exp)
   (cond ((self-evaluating? exp) exp)
         ((variable? exp) (lookup-variable-value exp env))
         (else
@@ -352,6 +354,22 @@
        (frame-delete-binding! (first-frame env)
                               (cadr exp))))
 
+(define (expand-letrec exp)
+  (let ((bindings (cadr exp))
+        (body (cddr exp)))
+    (make-let
+     (map (lambda (binding)
+            (list (car binding) ''*unassigned*))
+          bindings)
+     (append
+      (map (lambda (binding)
+             (list 'set! (car binding) (cadr binding)))
+           bindings)
+      body))))
+
+(put 'eval 'letrec
+     (lambda (exp env) (eval (expand-letrec exp) env)))
+
 ;;;section 4.1.3
 
 (define (true? x)
@@ -475,7 +493,8 @@
         (list '= =)
         (list '- -)
         (list '< <)
-        (list '> >)))
+        (list '> >)
+        (list 'list list)))
 
 (define (primitive-procedure-names)
   (map car
@@ -773,6 +792,57 @@
    '(let ((a 3))
       (make-unbound! a)
       a)
+   (setup-environment))))
+
+(test-group
+ "expand-letrec"
+ (test
+  '(let () x)
+  (expand-letrec
+   '(letrec () x)))
+ (test
+  '(let ((v '*unassigned*))
+     (set! v e)
+     b)
+  (expand-letrec
+   '(letrec ((v e)) b)))
+ (test
+  '(let ((v '*unassigned*)
+         (v1 '*unassigned*))
+     (set! v e)
+     (set! v1 e1)
+     x y)
+  (expand-letrec
+   '(letrec ((v e) (v1 e1)) x y))))
+
+(test-group
+ "letrec"
+ (test
+  120
+  (eval
+   '(letrec
+        ((fact
+          (lambda (n)
+            (if (= n 1)
+                1
+                (* n (fact (- n 1)))))))
+      (fact 5))
+   (setup-environment)))
+ (test
+  '(#t #f #t)
+  (eval
+   '(letrec
+        ((even?
+          (lambda (n)
+            (if (= n 0)
+                true
+                (odd? (- n 1)))))
+         (odd?
+          (lambda (n)
+            (if (= n 0)
+                false
+                (even? (- n 1))))))
+      (list (even? 0) (even? 1) (even? 2)))
    (setup-environment))))
 
 (define debug #t)
