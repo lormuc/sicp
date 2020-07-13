@@ -370,6 +370,12 @@
 (put 'eval 'letrec
      (lambda (exp env) (eval (expand-letrec exp) env)))
 
+(define (expand-unless exp)
+  (make-if (cadr exp) (cadddr exp) (caddr exp)))
+
+(put 'eval 'unless
+     (lambda (exp env) (eval (expand-unless exp) env)))
+
 ;;;section 4.1.3
 
 (define (true? x)
@@ -958,4 +964,14 @@
                   x)
           (setup-environment)))))
 
+(test-group
+ "unless"
+ (test 0 (eval '(unless true (/ 1 0) 0)
+               (setup-environment)))
+ (test 1 (eval '(unless false 1 (/ 1 0))
+               (setup-environment))))
+
 (define debug #t)
+
+(define (unless x y z) (if x z y))
+(log-line (map unless '(#t #t #f) '(red riding wolf) '(big bad hood)))
