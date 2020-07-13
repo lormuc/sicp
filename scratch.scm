@@ -1059,38 +1059,6 @@
 
 (define (thunk-value evaluated-thunk) (cadr evaluated-thunk))
 
-(define (eval-program exps)
-  (let ((env (setup-environment)))
-    (for-each
-     (lambda (exp)
-       (log-line (actual-value exp env)))
-     exps)))
-
-(define debug #t)
-
-(define interaction-code
-  '((define count 0)
-    (define (id x)
-      (set! count (+ count 1))
-      x)
-    (define (square x) (* x x))
-    (square (id 10))
-    count))
-
-(define memoization-benchmark-code
-  '((lambda ()
-      (define (f x y)
-        (if (= x 0)
-            y
-            (f (- x 1) (+ y y))))
-      (f 400 1))))
-
-(log-line "non-memoizing version")
-(log-line "benchmark:")
-(time (eval memoization-benchmark-code (setup-environment)))
-(log-line "interaction:")
-(eval-program interaction-code)
-
 (define (force-it obj)
   (cond ((thunk? obj)
          (let ((result (actual-value
@@ -1104,8 +1072,11 @@
          (thunk-value obj))
         (else obj)))
 
-(log-line "memoizing version")
-(log-line "benchmark:")
-(time (eval memoization-benchmark-code (setup-environment)))
-(log-line "interaction:")
-(eval-program interaction-code)
+(define (eval-program exps)
+  (let ((env (setup-environment)))
+    (for-each
+     (lambda (exp)
+       (log-line (actual-value exp env)))
+     exps)))
+
+(define debug #t)
