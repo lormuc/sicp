@@ -989,7 +989,7 @@
          (eval-sequence (begin-actions exp) env))
         ((cond? exp) (eval (cond->if exp) env))
         ((application? exp)             ; clause from book
-         (apply (actual-value (operator exp) env)
+         (apply (eval (operator exp) env)
                 (operands exp)
                 env))
         (else
@@ -1076,3 +1076,7 @@
         (else obj)))
 
 (define debug #t)
+
+(log-line
+ (eval '((lambda (f) (f)) (lambda () 3))
+       (setup-environment)))
