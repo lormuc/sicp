@@ -15,9 +15,79 @@
            (if proc
                (proc exp env)
                (if (application? exp)
-                   (apply (eval (operator exp) env)
-                          (list-of-values (operands exp) env))
+                   (let ((op-val (actual-value (operator exp) env)))
+                     (apply op-val
+                            (prepare-arguments op-val
+                                               (operands exp)
+                                               env)))
                    (error "unknown expression type -- eval" exp)))))))
+
+(define (prepare-arguments operator operands env)
+  (define (helper params args)
+    (if (no-operands? args)
+        '()
+        (cons
+         (let ((arg (first-operand args)))
+           (cond ((parameter-lazy? (car params))
+                  (delay-it arg env))
+                 ((parameter-lazy-memo? (car params))
+                  (delay-it-memo arg env))
+                 (else (eval arg env))))
+         (helper (cdr params) (rest-operands args)))))
+  (cond ((primitive-procedure? operator)
+         (map (lambda (exp) (actual-value exp env))
+              operands))
+        (else
+         (helper (procedure-parameters-x operator) operands))))
+
+;; thunks
+
+(define (delay-it exp env)
+  (list 'thunk exp env))
+(define (delay-it-memo exp env)
+  (list 'thunk-memo exp env))
+
+(define (thunk? obj)
+  (tagged-list? obj 'thunk))
+
+(define (thunk-memo? obj)
+  (tagged-list? obj 'thunk-memo))
+
+(define (thunk-exp thunk) (cadr thunk))
+(define (thunk-env thunk) (caddr thunk))
+
+(define (evaluated-thunk? obj)
+  (tagged-list? obj 'evaluated-thunk))
+
+(define (thunk-value evaluated-thunk) (cadr evaluated-thunk))
+
+(define (force-it obj)
+  (cond ((thunk? obj)
+         (actual-value (thunk-exp obj) (thunk-env obj)))
+        ((thunk-memo? obj)
+         (let ((result (actual-value
+                        (thunk-exp obj)
+                        (thunk-env obj))))
+           (set-car! obj 'evaluated-thunk)
+           (set-car! (cdr obj) result)  ; replace exp with its value
+           (set-cdr! (cdr obj) '())     ; forget unneeded env
+           result))
+        ((evaluated-thunk? obj)
+         (thunk-value obj))
+        (else obj)))
+
+(define (actual-value exp env)
+  (force-it (eval exp env)))
+
+(define (parameter-variable param)
+  (if (pair? param)
+      (car param)
+      param))
+
+(define (parameter-lazy? param)
+  (and (pair? param) (eq? (cadr param) 'lazy)))
+(define (parameter-lazy-memo? param)
+  (and (pair? param) (eq? (cadr param) 'lazy-memo)))
 
 (define (apply procedure arguments)
   (cond ((primitive-procedure? procedure)
@@ -33,12 +103,6 @@
          (error
           "unknown procedure type -- apply" procedure))))
 
-
-(define (list-of-values exps env)
-  (if (no-operands? exps)
-      '()
-      (cons (eval (first-operand exps) env)
-            (list-of-values (rest-operands exps) env))))
 
 (define (eval-if exp env)
   (if (true? (eval (if-predicate exp) env))
@@ -246,14 +310,15 @@
         (let ((first (car clauses))
               (rest (cdr clauses)))
           (let ((predicate-value
-                 (eval (if (cond-else-clause? first)
-                           'true
-                           (cond-predicate first))
-                       env)))
+                 (actual-value (if (cond-else-clause? first)
+                                   'true
+                                   (cond-predicate first))
+                               env)))
             (if (true? predicate-value)
                 (if (arrow-clause? first)
                     (let ((recipient
-                           (eval (arrow-clause-recipient first) env)))
+                           (actual-value (arrow-clause-recipient first)
+                                         env)))
                       (apply recipient (list predicate-value)))
                     (eval (sequence->exp (cond-actions first)) env))
                 (loop rest))))))
@@ -379,10 +444,10 @@
 ;;;section 4.1.3
 
 (define (true? x)
-  (not (eq? x false)))
+  (not (eq? (force-it x) false)))
 
 (define (false? x)
-  (eq? x false))
+  (eq? (force-it x) false))
 
 
 (define (make-procedure parameters body env)
@@ -392,7 +457,9 @@
   (tagged-list? p 'procedure))
 
 
-(define (procedure-parameters p) (cadr p))
+(define (procedure-parameters p)
+  (map parameter-variable (cadr p)))
+(define (procedure-parameters-x p) (cadr p))
 (define (procedure-body p) (caddr p))
 (define (procedure-environment p) (cadddr p))
 
@@ -853,6 +920,40 @@
                 (even? (- n 1))))))
       (list (even? 0) (even? 1) (even? 2)))
    (setup-environment))))
+
+(test-group
+ "lazy"
+ (test
+  3
+  (actual-value '((lambda ((x lazy)) x) 3)
+                (setup-environment)))
+ (test
+  1
+  (actual-value '((lambda ((x lazy) (y lazy)) y) (/ 1 0) 1)
+                (setup-environment)))
+ (test
+  4
+  (eval '((lambda ((x lazy) (y lazy) z) z) (/ 1 0) (/ 1 0) 4)
+        (setup-environment))))
+
+(test-group
+ "lazy-memo"
+ (test
+  3
+  (force-it (eval '((lambda ((x lazy-memo)) x) 3)
+                  (setup-environment))))
+ (test
+  1
+  (force-it (eval '(let ((y 0))
+                     ((lambda ((x lazy-memo)) (null? x) (null? x))
+                      (set! y (+ y 1)))
+                     y)
+                  (setup-environment))))
+ (test
+  4
+  (eval '((lambda (a b (c lazy-memo) d) (+ a b c d))
+          1 1 1 1)
+        (setup-environment))))
 
 (define (eval-a exp env)
   ((analyze exp) env))
