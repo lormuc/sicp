@@ -848,6 +848,9 @@
 (define (eval-a exp env)
   ((analyze exp) env))
 
+(define (let? exp)
+  (tagged-list? exp 'let))
+
 (define (analyze exp)
   (cond ((self-evaluating? exp)
          (analyze-self-evaluating exp))
@@ -859,6 +862,7 @@
         ((lambda? exp) (analyze-lambda exp))
         ((begin? exp) (analyze-sequence (begin-actions exp)))
         ((cond? exp) (analyze (cond->if exp)))
+        ((let? exp) (analyze (let->combination exp)))
         ((application? exp) (analyze-application exp))
         (else
          (error "unknown expression type -- analyze" exp))))
@@ -934,5 +938,24 @@
          (error
           "unknown procedure type -- execute-application"
           proc))))
+
+
+(let ((eval eval-a))
+  (test-group
+   "eval-a let"
+   (test
+    0
+    (eval '(let ((x 0)) x)
+          (setup-environment)))
+   (test
+    4
+    (eval '(let ((x 0) (y (+ 1 3))) (+ x y))
+          (setup-environment)))
+   (test
+    0
+    (eval '(begin (define x 0)
+                  (let () (define x 1))
+                  x)
+          (setup-environment)))))
 
 (define debug #t)
