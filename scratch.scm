@@ -570,7 +570,9 @@
         (list 'newline newline)
         (list 'display display)
         (list '> >)
-        (list '< <)))
+        (list '< <)
+        (list 'strict-cadr cadr)
+        (list 'strict-list list)))
 
 (define (primitive-procedure-names)
   (map car
@@ -1186,11 +1188,18 @@
        (log-line (actual-value exp env)))
      exps)))
 
+(define (lazy-pair? x)
+  (tagged-list? x 'lazy-pair))
+
 (define (lazy-list-setup-environment)
   (let ((env (setup-environment)))
-    (eval '(define (cons x y) (lambda (m) (m x y))) env)
-    (eval '(define (car z) (z (lambda (x y) x))) env)
-    (eval '(define (cdr z) (z (lambda (x y) y))) env)
+    (eval '(define (cons x y)
+             (strict-list 'lazy-pair (lambda (m) (m x y))))
+          env)
+    (eval '(define (car z) ((strict-cadr z) (lambda (x y) x)))
+          env)
+    (eval '(define (cdr z) ((strict-cadr z) (lambda (x y) y)))
+          env)
     env))
 
 (test-group
@@ -1204,4 +1213,38 @@
   (actual-value '(car (car (cdr '(a (b c)))))
                 (lazy-list-setup-environment))))
 
+(define (call operator arguments env)
+  (let ((procedure (actual-value operator env)))
+    (eval-sequence
+     (procedure-body procedure)
+     (extend-environment
+      (procedure-parameters procedure)
+      arguments
+      (procedure-environment procedure)))))
+
+(define (user-print value env)
+  (let ((count 10))
+    (define (show obj)
+      (if (= count 0)
+          (display "...")
+          (cond ((thunk? obj) (show (force-it obj)))
+                ((evaluated-thunk? obj)
+                 (show (thunk-value obj)))
+                ((lazy-pair? obj)
+                 (display "(")
+                 (show (call 'car (list obj) env))
+                 (display " . ")
+                 (show (call 'cdr (list obj) env))
+                 (display ")"))
+                (else (display obj)
+                      (set! count (- count 1))))))
+    (show value)))
+
 (define debug #t)
+
+(let ((env (lazy-list-setup-environment)))
+  (eval '(define ones (cons 1 ones)) env)
+  (user-print (actual-value 'ones env) env)
+  (newline)
+  (user-print (actual-value ''(1 2 3) env) env)
+  (newline))
