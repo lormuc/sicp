@@ -1078,7 +1078,13 @@
 (define (eval exp env)
   (cond ((self-evaluating? exp) exp)
         ((variable? exp) (lookup-variable-value exp env))
-        ((quoted? exp) (text-of-quotation exp))
+        ((quoted? exp)
+         (let ((text (text-of-quotation exp)))
+           (if (pair? text)
+               (eval `(cons (quote ,(car text))
+                            (quote ,(cdr text)))
+                     env)
+               text)))
         ((assignment? exp) (eval-assignment exp env))
         ((definition? exp) (eval-definition exp env))
         ((if? exp) (eval-if exp env))
@@ -1179,5 +1185,23 @@
      (lambda (exp)
        (log-line (actual-value exp env)))
      exps)))
+
+(define (lazy-list-setup-environment)
+  (let ((env (setup-environment)))
+    (eval '(define (cons x y) (lambda (m) (m x y))) env)
+    (eval '(define (car z) (z (lambda (x y) x))) env)
+    (eval '(define (cdr z) (z (lambda (x y) y))) env)
+    env))
+
+(test-group
+ "quoted pairs are lazy"
+ (test
+  'a
+  (actual-value '(car '(a b c))
+                (lazy-list-setup-environment)))
+ (test
+  'b
+  (actual-value '(car (car (cdr '(a (b c)))))
+                (lazy-list-setup-environment))))
 
 (define debug #t)
