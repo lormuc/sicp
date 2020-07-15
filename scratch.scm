@@ -1222,7 +1222,7 @@
       arguments
       (procedure-environment procedure)))))
 
-(define (user-print value env)
+(define (my-user-print value env)
   (let ((count 10))
     (define (show obj)
       (if (= count 0)
@@ -1240,11 +1240,304 @@
                       (set! count (- count 1))))))
     (show value)))
 
+(define (amb? exp) (tagged-list? exp 'amb))
+(define (amb-choices exp) (cdr exp))
+
+;; analyze from 4.1.6, with clause from 4.3.3 added
+;; and also support for let
+(define (analyze exp)
+  (cond ((self-evaluating? exp)
+         (analyze-self-evaluating exp))
+        ((quoted? exp) (analyze-quoted exp))
+        ((variable? exp) (analyze-variable exp))
+        ((assignment? exp) (analyze-assignment exp))
+        ((definition? exp) (analyze-definition exp))
+        ((if? exp) (analyze-if exp))
+        ((lambda? exp) (analyze-lambda exp))
+        ((begin? exp) (analyze-sequence (begin-actions exp)))
+        ((cond? exp) (analyze (cond->if exp)))
+        ((let? exp) (analyze (let->combination exp))) ;**
+        ((amb? exp) (analyze-amb exp))                ;**
+        ((application? exp) (analyze-application exp))
+        (else
+         (error "unknown expression type -- analyze" exp))))
+
+(define (amb-eval exp env succeed fail)
+  ((analyze exp) env succeed fail))
+
+;;;simple expressions
+
+(define (analyze-self-evaluating exp)
+  (lambda (env succeed fail)
+    (succeed exp fail)))
+
+(define (analyze-quoted exp)
+  (let ((qval (text-of-quotation exp)))
+    (lambda (env succeed fail)
+      (succeed qval fail))))
+
+(define (analyze-variable exp)
+  (lambda (env succeed fail)
+    (succeed (lookup-variable-value exp env)
+             fail)))
+
+(define (analyze-lambda exp)
+  (let ((vars (lambda-parameters exp))
+        (bproc (analyze-sequence (lambda-body exp))))
+    (lambda (env succeed fail)
+      (succeed (make-procedure vars bproc env)
+               fail))))
+
+;;;conditionals and sequences
+
+(define (analyze-if exp)
+  (let ((pproc (analyze (if-predicate exp)))
+        (cproc (analyze (if-consequent exp)))
+        (aproc (analyze (if-alternative exp))))
+    (lambda (env succeed fail)
+      (pproc env
+             ;; success continuation for evaluating the predicate
+             ;; to obtain pred-value
+             (lambda (pred-value fail-2)
+               (if (true? pred-value)
+                   (cproc env succeed fail-2)
+                   (aproc env succeed fail-2)))
+             ;; failure continuation for evaluating the predicate
+             fail))))
+
+(define (analyze-sequence exps)
+  (define (sequentially a b)
+    (lambda (env succeed fail)
+      (a env
+         ;; success continuation for calling a
+         (lambda (a-value fail-2)
+           (b env succeed fail-2))
+         ;; failure continuation for calling a
+         fail)))
+  (define (loop first-proc rest-procs)
+    (if (null? rest-procs)
+        first-proc
+        (loop (sequentially first-proc (car rest-procs))
+              (cdr rest-procs))))
+  (let ((procs (map analyze exps)))
+    (if (null? procs)
+        (error "empty sequence -- analyze"))
+    (loop (car procs) (cdr procs))))
+
+;;;definitions and assignments
+
+(define (analyze-definition exp)
+  (let ((var (definition-variable exp))
+        (vproc (analyze (definition-value exp))))
+    (lambda (env succeed fail)
+      (vproc env
+             (lambda (val fail-2)
+               (define-variable! var val env)
+               (succeed 'ok fail-2))
+             fail))))
+
+(define (analyze-assignment exp)
+  (let ((var (assignment-variable exp))
+        (vproc (analyze (assignment-value exp))))
+    (lambda (env succeed fail)
+      (vproc env
+             (lambda (val fail-2)        ; *1*
+               (let ((old-value
+                      (lookup-variable-value var env)))
+                 (set-variable-value! var val env)
+                 (succeed 'ok
+                          (lambda ()    ; *2*
+                            (set-variable-value! var
+                                                 old-value
+                                                 env)
+                            (fail-2)))))
+             fail))))
+
+;;;procedure applications
+
+(define (analyze-application exp)
+  (let ((fproc (analyze (operator exp)))
+        (aprocs (map analyze (operands exp))))
+    (lambda (env succeed fail)
+      (fproc env
+             (lambda (proc fail-2)
+               (get-args aprocs
+                         env
+                         (lambda (args fail-3)
+                           (execute-application
+                            proc args succeed fail-3))
+                         fail-2))
+             fail))))
+
+(define (get-args aprocs env succeed fail)
+  (if (null? aprocs)
+      (succeed '() fail)
+      ((car aprocs) env
+       ;; success continuation for this aproc
+       (lambda (arg fail-2)
+         (get-args (cdr aprocs)
+                   env
+                   ;; success continuation for recursive
+                   ;; call to get-args
+                   (lambda (args fail-3)
+                     (succeed (cons arg args)
+                              fail-3))
+                   fail-2))
+       fail)))
+
+(define (execute-application proc args succeed fail)
+  (cond ((primitive-procedure? proc)
+         (succeed (apply-primitive-procedure proc args)
+                  fail))
+        ((compound-procedure? proc)
+         ((procedure-body proc)
+          (extend-environment (procedure-parameters proc)
+                              args
+                              (procedure-environment proc))
+          succeed
+          fail))
+        (else
+         (error
+          "unknown procedure type -- execute-application"
+          proc))))
+
+;;;amb expressions
+
+(define (analyze-amb exp)
+  (let ((cprocs (map analyze (amb-choices exp))))
+    (lambda (env succeed fail)
+      (define (try-next choices)
+        (if (null? choices)
+            (fail)
+            ((car choices) env
+             succeed
+             (lambda ()
+               (try-next (cdr choices))))))
+      (try-next cprocs))))
+
+;;;driver loop
+
+(define input-prompt ";;; amb-eval input:")
+(define output-prompt ";;; amb-eval value:")
+
+(define (prompt-for-input string)
+  (newline) (newline) (display string) (newline))
+
+(define (announce-output string)
+  (display string) (newline))
+
+(define (user-print object)
+  (if (compound-procedure? object)
+      (display (list 'compound-procedure
+                     (procedure-parameters object)
+                     (procedure-body object)
+                     '<procedure-env>))
+      (display object)))
+
+(define (make-reader)
+  (let ((exps '()))
+    (lambda (message)
+      (cond ((eq? message 'put)
+             (lambda (new-exps)
+               (set! exps new-exps)
+               exps))
+            ((eq? message 'read)
+             (let ((result (car exps)))
+               (set! exps (cdr exps))
+               result))
+            ((eq? message 'empty?)
+             (null? exps))))))
+
+(define reader (make-reader))
+
+(define (driver-loop)
+  (define (internal-loop try-again)
+    (if (not (reader 'empty?))
+        (let ((input (reader 'read)))
+          (if (eq? input 'try-again)
+              (try-again)
+              (begin
+                (display ";;; starting a new problem")
+                (newline)
+                (amb-eval input
+                          the-global-environment
+                          ;; amb-eval success
+                          (lambda (val next-alternative)
+                            (announce-output output-prompt)
+                            (user-print val)
+                            (newline)
+                            (internal-loop next-alternative))
+                          ;; amb-eval failure
+                          (lambda ()
+                            (announce-output
+                             ";;; there are no more values of")
+                            (user-print input)
+                            (newline)
+                            (driver-loop))))))))
+  (internal-loop
+   (lambda ()
+     (display ";;; there is no current problem")
+     (newline)
+     (driver-loop))))
+
+;;; support for let (as noted in footnote 56, p.428)
+
+(define (let? exp) (tagged-list? exp 'let))
+(define (let-bindings exp) (cadr exp))
+(define (let-body exp) (cddr exp))
+
+(define (let-var binding) (car binding))
+(define (let-val binding) (cadr binding))
+
+(define (make-combination operator operands) (cons operator operands))
+
+(define (let->combination exp)
+  ;;make-combination defined in earlier exercise
+  (let ((bindings (let-bindings exp)))
+    (make-combination (make-lambda (map let-var bindings)
+                                   (let-body exp))
+                      (map let-val bindings))))
+
+;; a longer list of primitives -- suitable for running everything in 4.3
+;; overrides the list in ch4-mceval.scm
+;; has not to support require; various stuff for code in text (including
+;;  support for prime?); integer? and sqrt for exercise code;
+;;  eq? for ex. solution
+
+(define primitive-procedures
+  (list (list 'car car)
+        (list 'cdr cdr)
+        (list 'cons cons)
+        (list 'null? null?)
+        (list 'list list)
+        (list 'memq memq)
+        (list 'member member)
+        (list 'not not)
+        (list '+ +)
+        (list '- -)
+        (list '* *)
+        (list '= =)
+        (list '> >)
+        (list '>= >=)
+        (list '<= <=)
+        (list 'abs abs)
+        (list 'remainder remainder)
+        (list 'integer? integer?)
+        (list 'sqrt sqrt)
+        (list 'eq? eq?)))
+
+(test-group
+ "make-reader"
+ (test
+  '(#f 0 1 2 #t)
+  (let ((r (make-reader)))
+    ((r 'put) '(0 1 2))
+    (list (r 'empty?) (r 'read) (r 'read) (r 'read) (r 'empty?)))))
+
+(define the-global-environment (setup-environment))
 (define debug #t)
 
-(let ((env (lazy-list-setup-environment)))
-  (eval '(define ones (cons 1 ones)) env)
-  (user-print (actual-value 'ones env) env)
-  (newline)
-  (user-print (actual-value ''(1 2 3) env) env)
-  (newline))
+((reader 'put)
+ '((define (require p) (if (not p) (amb)))
+   (+ 1 2)))
+(driver-loop)
