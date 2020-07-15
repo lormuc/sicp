@@ -1539,5 +1539,11 @@
 
 ((reader 'put)
  '((define (require p) (if (not p) (amb)))
-   (+ 1 2)))
+   (define (an-integer-between low high)
+     (require (<= low high))
+     (amb low (an-integer-between (+ low 1) high)))
+   (define (an-integer-starting-from low)
+     (amb low (an-integer-starting-from (+ 1 low))))
+   (an-integer-between 0 3)
+   try-again))
 (driver-loop)
