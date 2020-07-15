@@ -1544,6 +1544,20 @@
      (amb low (an-integer-between (+ low 1) high)))
    (define (an-integer-starting-from low)
      (amb low (an-integer-starting-from (+ 1 low))))
-   (an-integer-between 0 3)
+   (define (a-pythagorean-triple k-low)
+     (amb (let ((i (an-integer-between 1 k-low)))
+            (let ((j (an-integer-between i k-low)))
+              (require (= (+ (* i i) (* j j)) (* k-low k-low)))
+              (list i j k-low)))
+          (a-pythagorean-triple (+ 1 k-low))))
+   (a-pythagorean-triple 0)
+   try-again
+   try-again
+   try-again
+   try-again
+   try-again
+   try-again
+   try-again
+   try-again
    try-again))
 (driver-loop)
