@@ -1570,12 +1570,11 @@
            (parse-word verbs)))
 
    (define (parse-word word-list)
-     ;; (require (not (null? *unparsed*)))
-     ;; (require (memq (car *unparsed*) (cdr word-list)))
-     ;; (let ((found-word (car *unparsed*)))
-     ;;   (set! *unparsed* (cdr *unparsed*))
-     ;;   (list (car word-list) found-word))
-     (list (car word-list) (an-element-of (cdr word-list))))
+     (require (not (null? *unparsed*)))
+     (require (memq (car *unparsed*) (cdr word-list)))
+     (let ((found-word (car *unparsed*)))
+       (set! *unparsed* (cdr *unparsed*))
+       (list (car word-list) found-word)))
 
    (define *unparsed* '())
 
@@ -1605,10 +1604,16 @@
                                 (parse-prepositional-phrase)))))
      (maybe-extend (parse-word verbs)))
 
+   (define (parse-adjective-phrase)
+     (amb (parse-word nouns)
+          (list 'adjective-phrase
+                (parse-word adjectives)
+                (parse-adjective-phrase))))
+
    (define (parse-simple-noun-phrase)
      (list 'simple-noun-phrase
            (parse-word articles)
-           (parse-word nouns)))
+           (parse-adjective-phrase)))
 
    (define (parse-noun-phrase)
      (define (maybe-extend noun-phrase)
@@ -1618,13 +1623,12 @@
                                 (parse-prepositional-phrase)))))
      (maybe-extend (parse-simple-noun-phrase)))
 
-   ;; (define adverbs '(adverb regularly))
    (define adjectives '(adjective short big black large))
 
-   ;; (parse '(the professor lectures to the short
-   ;;              student in the large class with
-   ;;              the big black cat))
-   (parse '())
+   (parse
+    '(the
+      professor lectures to the student in
+      the large class with the big black cat))
    try-again
    try-again
    try-again
