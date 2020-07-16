@@ -1539,6 +1539,9 @@
 
 ((reader 'put)
  '((define (require p) (if (not p) (amb)))
+   (define (an-element-of items)
+     (require (not (null? items)))
+     (amb (car items) (an-element-of (cdr items))))
    (define (an-integer-between low high)
      (require (<= low high))
      (amb low (an-integer-between (+ low 1) high)))
@@ -1551,50 +1554,80 @@
            (else (distinct? (cdr items)))))
    (define (xor a b)
      (if a (not b) b))
-   (define (solve)
-     (define (select-daughter)
-       (amb 'meri 'rosalinda 'lorna 'gabriella 'melissa))
-     (let ((mur-y (select-daughter))
-           (dauning-y (select-daughter))
-           (holl-y (select-daughter))
-           (barnakl-y (select-daughter))
-           (parker-y (select-daughter)))
-       (require (eq? barnakl-y 'gabriella))
-       (require (eq? mur-y 'lorna))
-       (require (eq? holl-y 'rosalinda))
-       (require (eq? dauning-y 'melissa))
-       (require (distinct?
-                 (list mur-y dauning-y holl-y barnakl-y parker-y)))
-       (let ((mur-d (select-daughter))
-             (dauning-d (select-daughter))
-             (holl-d (select-daughter))
-             (barnakl-d (select-daughter))
-             (parker-d (select-daughter)))
-         (require (eq? barnakl-d 'melissa))
-         ;; (require (eq? mur-d 'meri))
-         (require (not (eq? mur-d mur-y)))
-         (require (not (eq? dauning-d dauning-y)))
-         (require (not (eq? holl-d holl-y)))
-         (require (not (eq? barnakl-d barnakl-y)))
-         (require (not (eq? parker-d parker-y)))
-         (require (distinct?
-                   (list mur-d dauning-d holl-d barnakl-d parker-d)))
-         (let ((father-of-gabriella-yacht
-                (cond ((eq? mur-d 'gabriella) mur-y)
-                      ((eq? dauning-d 'gabriella) dauning-d)
-                      ((eq? holl-d 'gabriella) holl-y)
-                      ((eq? barnakl-d 'gabriella) barnakl-y)
-                      ((eq? parker-d 'gabriella) parker-y))))
-           (require (eq? father-of-gabriella-yacht parker-d)))
-         (list (list 'mur mur-d mur-y)
-               (list 'dauning dauning-d dauning-y)
-               (list 'holl holl-d holl-y)
-               (list 'barnakl barnakl-d barnakl-y)
-               (list 'parker parker-d parker-y)))))
-   (solve)
+   (define nouns '(noun student professor cat class))
+
+   (define verbs '(verb studies lectures eats sleeps))
+
+   (define articles '(article the a))
+
+   ;; output of parse
+   '(sentence (noun-phrase (article the) (noun cat))
+              (verb eats))
+
+   (define (parse-sentence)
+     (list 'sentence
+           (parse-noun-phrase)
+           (parse-word verbs)))
+
+   (define (parse-word word-list)
+     ;; (require (not (null? *unparsed*)))
+     ;; (require (memq (car *unparsed*) (cdr word-list)))
+     ;; (let ((found-word (car *unparsed*)))
+     ;;   (set! *unparsed* (cdr *unparsed*))
+     ;;   (list (car word-list) found-word))
+     (list (car word-list) (an-element-of (cdr word-list))))
+
+   (define *unparsed* '())
+
+   (define (parse input)
+     (set! *unparsed* input)
+     (let ((sent (parse-sentence)))
+       (require (null? *unparsed*))
+       sent))
+
+   (define prepositions '(prep for to in by with))
+
+   (define (parse-prepositional-phrase)
+     (list 'prep-phrase
+           (parse-word prepositions)
+           (parse-noun-phrase)))
+
+   (define (parse-sentence)
+     (list 'sentence
+           (parse-noun-phrase)
+           (parse-verb-phrase)))
+
+   (define (parse-verb-phrase)
+     (define (maybe-extend verb-phrase)
+       (amb verb-phrase
+            (maybe-extend (list 'verb-phrase
+                                verb-phrase
+                                (parse-prepositional-phrase)))))
+     (maybe-extend (parse-word verbs)))
+
+   (define (parse-simple-noun-phrase)
+     (list 'simple-noun-phrase
+           (parse-word articles)
+           (parse-word nouns)))
+
+   (define (parse-noun-phrase)
+     (define (maybe-extend noun-phrase)
+       (amb noun-phrase
+            (maybe-extend (list 'noun-phrase
+                                noun-phrase
+                                (parse-prepositional-phrase)))))
+     (maybe-extend (parse-simple-noun-phrase)))
+
+   ;; (define adverbs '(adverb regularly))
+   (define adjectives '(adjective short big black large))
+
+   ;; (parse '(the professor lectures to the short
+   ;;              student in the large class with
+   ;;              the big black cat))
+   (parse '())
    try-again
    try-again
    try-again
    try-again
    try-again))
-(time (driver-loop))
+(driver-loop)
