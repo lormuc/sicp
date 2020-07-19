@@ -1,4 +1,5 @@
 (import trace)
+(import (chicken random))
 (load "prelude.scm")
 
 ;;; begin metacircular evaluator
@@ -306,6 +307,8 @@
 (define (amb? exp) (tagged-list? exp 'amb))
 (define (amb-choices exp) (cdr exp))
 
+(define (ramb? exp) (tagged-list? exp 'ramb))
+
 ;; analyze from 4.1.6, with clause from 4.3.3 added
 ;; and also support for let
 (define (analyze exp)
@@ -321,6 +324,7 @@
         ((cond? exp) (analyze (cond->if exp)))
         ((let? exp) (analyze (let->combination exp))) ;**
         ((amb? exp) (analyze-amb exp))                ;**
+        ((ramb? exp) (analyze-ramb exp))
         ((application? exp) (analyze-application exp))
         (else
          (error "unknown expression type -- analyze" exp))))
@@ -478,6 +482,12 @@
                (try-next (cdr choices))))))
       (try-next cprocs))))
 
+(define (analyze-ramb exp)
+  (analyze-amb
+   (cons 'amb
+         (shuffle (cdr exp)
+                  pseudo-random-integer))))
+
 ;;;driver loop
 
 (define (user-print object)
@@ -589,7 +599,48 @@
 
 ;;; end amb evaluator
 
+(define (list-remove items i)
+  (if (= i 0)
+      (cdr items)
+      (cons (car items)
+            (list-remove (cdr items) (- i 1)))))
+
+(define (shuffle items picker)
+  (if (null? items)
+      '()
+      (let ((i (picker (length items))))
+        (cons (list-ref items i)
+              (shuffle (list-remove items i) picker)))))
+
+(test-group
+ "list-remove"
+ (test
+  '(1 2 3)
+  (list-remove '(0 1 2 3) 0))
+ (test
+  '(0 1 2)
+  (list-remove '(0 1 2 3) 3))
+ (test
+  '(0 1 3)
+  (list-remove '(0 1 2 3) 2)))
+
+(test-group
+ "shuffle"
+ (test
+  '()
+  (shuffle '() '()))
+ (test
+  '(0 1 2 3)
+  (shuffle '(0 1 2 3)
+           (lambda (n) 0)))
+ (test
+  '(3 2 1 0)
+  (shuffle '(0 1 2 3)
+           (lambda (n) (- n 1)))))
+
 (define debug #t)
+
+(log-line (pseudo-random-integer 4))
 
 ((exp-reader 'put)
  '((define (require p) (if (not p) (amb)))
@@ -604,5 +655,10 @@
            ((null? (cdr items)) true)
            ((member (car items) (cdr items)) false)
            (else (distinct? (cdr items)))))
-   (an-integer-between 0 5)))
+   (ramb)
+   (ramb 0 1 2 3)
+   try-again
+   try-again
+   try-again
+   try-again))
 (driver-loop)
