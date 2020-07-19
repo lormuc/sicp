@@ -308,6 +308,8 @@
 (define (amb-choices exp) (cdr exp))
 
 (define (ramb? exp) (tagged-list? exp 'ramb))
+(define (permanent-assignment? exp)
+  (tagged-list? exp 'permanent-set!))
 
 ;; analyze from 4.1.6, with clause from 4.3.3 added
 ;; and also support for let
@@ -325,6 +327,8 @@
         ((let? exp) (analyze (let->combination exp))) ;**
         ((amb? exp) (analyze-amb exp))                ;**
         ((ramb? exp) (analyze-ramb exp))
+        ((permanent-assignment? exp)
+         (analyze-permanent-assignment exp))
         ((application? exp) (analyze-application exp))
         (else
          (error "unknown expression type -- analyze" exp))))
@@ -487,6 +491,16 @@
    (cons 'amb
          (shuffle (cdr exp)
                   pseudo-random-integer))))
+
+(define (analyze-permanent-assignment exp)
+  (let ((var (assignment-variable exp))
+        (vproc (analyze (assignment-value exp))))
+    (lambda (env succeed fail)
+      (vproc env
+             (lambda (val fail-2)
+               (set-variable-value! var val env)
+               (succeed 'ok fail-2))
+             fail))))
 
 ;;;driver loop
 
@@ -655,10 +669,11 @@
            ((null? (cdr items)) true)
            ((member (car items) (cdr items)) false)
            (else (distinct? (cdr items)))))
-   (ramb)
-   (ramb 0 1 2 3)
-   try-again
-   try-again
-   try-again
+   (define count 0)
+   (let ((x (an-element-of '(a b c)))
+         (y (an-element-of '(a b c))))
+     (permanent-set! count (+ count 1))
+     (require (not (eq? x y)))
+     (list x y count))
    try-again))
 (driver-loop)
