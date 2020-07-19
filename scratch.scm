@@ -310,6 +310,7 @@
 (define (ramb? exp) (tagged-list? exp 'ramb))
 (define (permanent-assignment? exp)
   (tagged-list? exp 'permanent-set!))
+(define (if-fail? exp) (tagged-list? exp 'if-fail))
 
 ;; analyze from 4.1.6, with clause from 4.3.3 added
 ;; and also support for let
@@ -329,6 +330,8 @@
         ((ramb? exp) (analyze-ramb exp))
         ((permanent-assignment? exp)
          (analyze-permanent-assignment exp))
+        ((if-fail? exp)
+         (analyze-if-fail exp))
         ((application? exp) (analyze-application exp))
         (else
          (error "unknown expression type -- analyze" exp))))
@@ -502,6 +505,15 @@
                (succeed 'ok fail-2))
              fail))))
 
+(define (analyze-if-fail exp)
+  (let ((exp-proc (analyze (cadr exp)))
+        (fail-proc (analyze (caddr exp))))
+    (lambda (env succeed fail)
+      (exp-proc env
+                succeed
+                (lambda ()
+                  (fail-proc env succeed fail))))))
+
 ;;;driver loop
 
 (define (user-print object)
@@ -607,7 +619,8 @@
         (list 'remainder remainder)
         (list 'integer? integer?)
         (list 'sqrt sqrt)
-        (list 'eq? eq?)))
+        (list 'eq? eq?)
+        (list 'modulo modulo)))
 
 (define the-global-environment (setup-environment))
 
@@ -670,10 +683,21 @@
            ((member (car items) (cdr items)) false)
            (else (distinct? (cdr items)))))
    (define count 0)
+   (define (even? x) (= (modulo x 2) 0))
    (let ((x (an-element-of '(a b c)))
          (y (an-element-of '(a b c))))
      (permanent-set! count (+ count 1))
      (require (not (eq? x y)))
      (list x y count))
-   try-again))
+   try-again
+   (if-fail
+    (let ((x (an-element-of '(1 3 5))))
+      (require (even? x))
+      x)
+    'all-odd)
+   (if-fail
+    (let ((x (an-element-of '(1 3 5 8))))
+      (require (even? x))
+      x)
+    'all-odd)))
 (driver-loop)
