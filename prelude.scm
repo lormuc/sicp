@@ -42,3 +42,14 @@
 (define operation-table (make-table))
 (define get (operation-table 'lookup-proc))
 (define put (operation-table 'insert-proc!))
+
+
+(define-syntax cons-stream
+  (syntax-rules ()
+    ((cons-stream x y) (cons x (delay y)))))
+
+(define (stream-car stream) (car stream))
+(define (stream-cdr stream) (force (cdr stream)))
+
+(define stream-null? null?)
+(define the-empty-stream '())
