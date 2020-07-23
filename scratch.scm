@@ -1,451 +1,64 @@
-(import trace)
-(import (chicken random))
 (load "prelude.scm")
 
-
-
-;;;;query system from section 4.4.4 of
-;;;; structure and interpretation of computer programs
-
-;;;;matches code in ch4.scm
-;;;;includes:
-;;;;  -- supporting code from 4.1, chapter 3, and instructor's manual
-;;;;  -- data base from section 4.4.1 -- see microshaft-data-base below
-
-;;;;this file can be loaded into scheme as a whole.
-;;;;in order to run the query system, the scheme must support streams.
-
-;;;;nb. put's are commented out and no top-level table is set up.
-;;;;instead use initialize-data-base (from manual), supplied in this file.
-
-
-;;;section 4.4.4.1
-;;;the driver loop and instantiation
-
-(define input-prompt ";;; query input:")
-(define output-prompt ";;; query results:")
-
-(define (query-driver-loop)
-  (prompt-for-input input-prompt)
-  (let ((q (query-syntax-process (read))))
-    (cond ((assertion-to-be-added? q)
-           (add-rule-or-assertion! (add-assertion-body q))
-           (display "assertion added to data base.")
-           (newline)
-           (query-driver-loop))
-          (else
-           (display output-prompt)
-           (newline)
-           ;; [extra newline at end] (announce-output output-prompt)
-           (display-stream
-            (stream-map
-             (lambda (frame)
-               (instantiate q
-                            frame
-                            (lambda (v f)
-                              (contract-question-mark v))))
-             (qeval q (singleton-stream '()))))
-           (query-driver-loop)))))
-
-(define (instantiate exp frame unbound-var-handler)
-  (define (copy exp)
-    (cond ((var? exp)
-           (let ((binding (binding-in-frame exp frame)))
-             (if binding
-                 (copy (binding-value binding))
-                 (unbound-var-handler exp frame))))
-          ((pair? exp)
-           (cons (copy (car exp)) (copy (cdr exp))))
-          (else exp)))
-  (copy exp))
-
-
-;;;section 4.4.4.2
-;;;the evaluator
-
-(define (qeval query frame-stream)
-  (let ((qproc (get (type query) 'qeval)))
-    (if qproc
-        (qproc (contents query) frame-stream)
-        (simple-query query frame-stream))))
-
-;;;simple queries
-
-(define (simple-query query-pattern frame-stream)
-  (stream-flatmap
-   (lambda (frame)
-     (stream-append-delayed
-      (find-assertions query-pattern frame)
-      (delay (apply-rules query-pattern frame))))
-   frame-stream))
-
-;;;compound queries
-
-(define (conjoin conjuncts frame-stream)
-  (if (empty-conjunction? conjuncts)
-      frame-stream
-      (conjoin (rest-conjuncts conjuncts)
-               (qeval (first-conjunct conjuncts)
-                      frame-stream))))
-
-;;(put 'and 'qeval conjoin)
-
-
-(define (disjoin disjuncts frame-stream)
-  (if (empty-disjunction? disjuncts)
-      the-empty-stream
-      (interleave-delayed
-       (qeval (first-disjunct disjuncts) frame-stream)
-       (delay (disjoin (rest-disjuncts disjuncts)
-                       frame-stream)))))
-
-;;(put 'or 'qeval disjoin)
-
-;;;filters
-
-(define (negate operands frame-stream)
-  (stream-flatmap
-   (lambda (frame)
-     (if (stream-null? (qeval (negated-query operands)
-                              (singleton-stream frame)))
-         (singleton-stream frame)
-         the-empty-stream))
-   frame-stream))
-
-;;(put 'not 'qeval negate)
-
-(define (lisp-value call frame-stream)
-  (stream-flatmap
-   (lambda (frame)
-     (if (execute
-          (instantiate
-           call
-           frame
-           (lambda (v f)
-             (error "unknown pat var -- lisp-value" v))))
-         (singleton-stream frame)
-         the-empty-stream))
-   frame-stream))
-
-;;(put 'lisp-value 'qeval lisp-value)
-
-(define (execute exp)
-  (apply (eval (predicate exp) user-initial-environment)
-         (args exp)))
-
-(define (always-true ignore frame-stream) frame-stream)
-
-;;(put 'always-true 'qeval always-true)
-
-;;;section 4.4.4.3
-;;;finding assertions by pattern matching
-
-(define (find-assertions pattern frame)
-  (stream-flatmap (lambda (datum)
-                    (check-an-assertion datum pattern frame))
-                  (fetch-assertions pattern frame)))
-
-(define (check-an-assertion assertion query-pat query-frame)
-  (let ((match-result
-         (pattern-match query-pat assertion query-frame)))
-    (if (eq? match-result 'failed)
-        the-empty-stream
-        (singleton-stream match-result))))
-
-(define (pattern-match pat dat frame)
-  (cond ((eq? frame 'failed) 'failed)
-        ((equal? pat dat) frame)
-        ((var? pat) (extend-if-consistent pat dat frame))
-        ((and (pair? pat) (pair? dat))
-         (pattern-match (cdr pat)
-                        (cdr dat)
-                        (pattern-match (car pat)
-                                       (car dat)
-                                       frame)))
-        (else 'failed)))
-
-(define (extend-if-consistent var dat frame)
-  (let ((binding (binding-in-frame var frame)))
-    (if binding
-        (pattern-match (binding-value binding) dat frame)
-        (extend var dat frame))))
-
-;;;section 4.4.4.4
-;;;rules and unification
-
-(define (apply-rules pattern frame)
-  (stream-flatmap (lambda (rule)
-                    (apply-a-rule rule pattern frame))
-                  (fetch-rules pattern frame)))
-
-(define (apply-a-rule rule query-pattern query-frame)
-  (let ((clean-rule (rename-variables-in rule)))
-    (let ((unify-result
-           (unify-match query-pattern
-                        (conclusion clean-rule)
-                        query-frame)))
-      (if (eq? unify-result 'failed)
-          the-empty-stream
-          (qeval (rule-body clean-rule)
-                 (singleton-stream unify-result))))))
-
-(define (rename-variables-in rule)
-  (let ((rule-application-id (new-rule-application-id)))
-    (define (tree-walk exp)
-      (cond ((var? exp)
-             (make-new-variable exp rule-application-id))
-            ((pair? exp)
-             (cons (tree-walk (car exp))
-                   (tree-walk (cdr exp))))
-            (else exp)))
-    (tree-walk rule)))
-
-(define (unify-match p1 p2 frame)
-  (cond ((eq? frame 'failed) 'failed)
-        ((equal? p1 p2) frame)
-        ((var? p1) (extend-if-possible p1 p2 frame))
-        ((var? p2) (extend-if-possible p2 p1 frame)) ; {\em ; ***}
-        ((and (pair? p1) (pair? p2))
-         (unify-match (cdr p1)
-                      (cdr p2)
-                      (unify-match (car p1)
-                                   (car p2)
-                                   frame)))
-        (else 'failed)))
-
-(define (extend-if-possible var val frame)
-  (let ((binding (binding-in-frame var frame)))
-    (cond (binding
-           (unify-match
-            (binding-value binding) val frame))
-          ((var? val)                     ; {\em ; ***}
-           (let ((binding (binding-in-frame val frame)))
-             (if binding
-                 (unify-match
-                  var (binding-value binding) frame)
-                 (extend var val frame))))
-          ((depends-on? val var frame)    ; {\em ; ***}
-           'failed)
-          (else (extend var val frame)))))
-
-(define (depends-on? exp var frame)
-  (define (tree-walk e)
-    (cond ((var? e)
-           (if (equal? var e)
-               true
-               (let ((b (binding-in-frame e frame)))
-                 (if b
-                     (tree-walk (binding-value b))
-                     false))))
-          ((pair? e)
-           (or (tree-walk (car e))
-               (tree-walk (cdr e))))
-          (else false)))
-  (tree-walk exp))
-
-;;;section 4.4.4.5
-;;;maintaining the data base
-
-(define the-assertions the-empty-stream)
-
-(define (fetch-assertions pattern frame)
-  (if (use-index? pattern)
-      (get-indexed-assertions pattern)
-      (get-all-assertions)))
-
-(define (get-all-assertions) the-assertions)
-
-(define (get-indexed-assertions pattern)
-  (get-stream (index-key-of pattern) 'assertion-stream))
-
-(define (get-stream key1 key2)
-  (let ((s (get key1 key2)))
-    (if s s the-empty-stream)))
-
-(define the-rules the-empty-stream)
-
-(define (fetch-rules pattern frame)
-  (if (use-index? pattern)
-      (get-indexed-rules pattern)
-      (get-all-rules)))
-
-(define (get-all-rules) the-rules)
-
-(define (get-indexed-rules pattern)
-  (stream-append
-   (get-stream (index-key-of pattern) 'rule-stream)
-   (get-stream '? 'rule-stream)))
-
-(define (add-rule-or-assertion! assertion)
-  (if (rule? assertion)
-      (add-rule! assertion)
-      (add-assertion! assertion)))
-
-(define (add-assertion! assertion)
-  (store-assertion-in-index assertion)
-  (let ((old-assertions the-assertions))
-    (set! the-assertions
-          (cons-stream assertion old-assertions))
-    'ok))
-
-(define (add-rule! rule)
-  (store-rule-in-index rule)
-  (let ((old-rules the-rules))
-    (set! the-rules (cons-stream rule old-rules))
-    'ok))
-
-(define (store-assertion-in-index assertion)
-  (if (indexable? assertion)
-      (let ((key (index-key-of assertion)))
-        (let ((current-assertion-stream
-               (get-stream key 'assertion-stream)))
-          (put key
-               'assertion-stream
-               (cons-stream assertion
-                            current-assertion-stream))))))
-
-(define (store-rule-in-index rule)
-  (let ((pattern (conclusion rule)))
-    (if (indexable? pattern)
-        (let ((key (index-key-of pattern)))
-          (let ((current-rule-stream
-                 (get-stream key 'rule-stream)))
-            (put key
-                 'rule-stream
-                 (cons-stream rule
-                              current-rule-stream)))))))
-
-(define (indexable? pat)
-  (or (constant-symbol? (car pat))
-      (var? (car pat))))
-
-(define (index-key-of pat)
-  (let ((key (car pat)))
-    (if (var? key) '? key)))
-
-(define (use-index? pat)
-  (constant-symbol? (car pat)))
-
-;;;section 4.4.4.6
-;;;stream operations
-
-(define (stream-append-delayed s1 delayed-s2)
-  (if (stream-null? s1)
-      (force delayed-s2)
-      (cons-stream
-       (stream-car s1)
-       (stream-append-delayed (stream-cdr s1) delayed-s2))))
-
-(define (interleave-delayed s1 delayed-s2)
-  (if (stream-null? s1)
-      (force delayed-s2)
-      (cons-stream
-       (stream-car s1)
-       (interleave-delayed (force delayed-s2)
-                           (delay (stream-cdr s1))))))
-
-(define (stream-flatmap proc s)
-  (flatten-stream (stream-map proc s)))
-
-(define (flatten-stream stream)
-  (if (stream-null? stream)
-      the-empty-stream
-      (interleave-delayed
-       (stream-car stream)
-       (delay (flatten-stream (stream-cdr stream))))))
-
-
-(define (singleton-stream x)
-  (cons-stream x the-empty-stream))
-
-
-;;;section 4.4.4.7
-;;;query syntax procedures
+(test-begin)
 
 (define (type exp)
-  (if (pair? exp)
-      (car exp)
-      (error "unknown expression type" exp)))
+  (car exp))
 
 (define (contents exp)
-  (if (pair? exp)
-      (cdr exp)
-      (error "unknown expression contents" exp)))
+  (cdr exp))
 
-(define (assertion-to-be-added? exp)
-  (eq? (type exp) 'assert!))
-
-(define (add-assertion-body exp)
-  (car (contents exp)))
-
-(define (empty-conjunction? exps) (null? exps))
-(define (first-conjunct exps) (car exps))
-(define (rest-conjuncts exps) (cdr exps))
-
-(define (empty-disjunction? exps) (null? exps))
-(define (first-disjunct exps) (car exps))
-(define (rest-disjuncts exps) (cdr exps))
-
-(define (negated-query exps) (car exps))
-
-(define (predicate exps) (car exps))
-(define (args exps) (cdr exps))
-
+(test-group
+ "type contents"
+ (test 'and (type '(and (a (? x)) (b (? x)))))
+ (test '((a (? x)) (b (? x)))
+       (contents '(and (a (? x)) (b (? x))))))
 
 (define (rule? statement)
   (tagged-list? statement 'rule))
-
-(define (conclusion rule) (cadr rule))
+(test #f (rule? '(x y z)))
+(test #t (rule? '(rule (a (? x)) (b (? x)))))
 
 (define (rule-body rule)
   (if (null? (cddr rule))
       '(always-true)
       (caddr rule)))
 
-(define (query-syntax-process exp)
-  (map-over-symbols expand-question-mark exp))
-
-(define (map-over-symbols proc exp)
-  (cond ((pair? exp)
-         (cons (map-over-symbols proc (car exp))
-               (map-over-symbols proc (cdr exp))))
-        ((symbol? exp) (proc exp))
-        (else exp)))
-
-(define (expand-question-mark symbol)
-  (let ((chars (symbol->string symbol)))
-    (if (string=? (substring chars 0 1) "?")
-        (list '?
-              (string->symbol
-               (substring chars 1 (string-length chars))))
-        symbol)))
+(define (conclusion rule)
+  (cadr rule))
+(test '(abc (? a) (? b) (? c))
+      (conclusion '(rule (abc (? a) (? b) (? c)))))
 
 (define (var? exp)
   (tagged-list? exp '?))
 
-(define (constant-symbol? exp) (symbol? exp))
+(define (constant-symbol? exp)
+  (symbol? exp))
 
-(define rule-counter 0)
+(test-group
+ "constant-symbol?"
+ (test
+  #f
+  (constant-symbol? '(? x)))
+ (test
+  #t
+  (constant-symbol? 'a)))
 
-(define (new-rule-application-id)
-  (set! rule-counter (+ 1 rule-counter))
-  rule-counter)
-
-(define (make-new-variable var rule-application-id)
-  (cons '? (cons rule-application-id (cdr var))))
-
-(define (contract-question-mark variable)
+(define (contract-question-mark var)
   (string->symbol
-   (string-append "?"
-                  (if (number? (cadr variable))
-                      (string-append (symbol->string (caddr variable))
-                                     "-"
-                                     (number->string (cadr variable)))
-                      (symbol->string (cadr variable))))))
+   (string-append
+    "?"
+    (if (symbol? (cadr var))
+        (symbol->string (cadr var))
+        (string-append (symbol->string (caddr var))
+                       "#"
+                       (number->string (cadr var)))))))
 
+(test-group
+ "contract-question-mark"
+ (test '?var (contract-question-mark '(? var)))
+ (test '?x#0 (contract-question-mark '(? 0 x))))
 
-;;;section 4.4.4.8
-;;;frames and bindings
 (define (make-binding variable value)
   (cons variable value))
 
@@ -455,140 +68,753 @@
 (define (binding-value binding)
   (cdr binding))
 
+(test-group
+ "binding"
+ (test
+  '(x . 0)
+  (let ((binding (make-binding 'x 0)))
+    (cons (binding-variable binding)
+          (binding-value binding)))))
 
 (define (binding-in-frame variable frame)
-  (assoc variable frame))
+  (if (null? frame)
+      #f
+      (if (equal? variable
+                  (binding-variable (car frame)))
+          (car frame)
+          (binding-in-frame variable (cdr frame)))))
+
+(test-group
+ "binding-in-frame"
+ (test
+  #f
+  (binding-in-frame '(? x) '()))
+ (test
+  '((? y) . 3)
+  (binding-in-frame
+   '(? y)
+   '(((? x) . 0) ((? y) . 3) ((? z) . 5)))))
 
 (define (extend variable value frame)
   (cons (make-binding variable value) frame))
 
+(test-group
+ "extend"
+ (test '(((? x) . 0)) (extend '(? x) 0 '()))
+ (test '(((? y) . 1) ((? x) . 0))
+       (extend '(? y) 1 '(((? x) . 0)))))
 
-;;;;from section 4.1
+(define (use-index? exp)
+  (constant-symbol? (car exp)))
+(test #t (use-index? '(x y)))
+(test #f (use-index? '((? x) (? y) z)))
 
-(define (tagged-list? exp tag)
-  (if (pair? exp)
-      (eq? (car exp) tag)
-      false))
+(define (index-key-of pat)
+  (if (constant-symbol? (car pat))
+      (car pat)
+      '?))
+(test '? (index-key-of '((? x) (? y))))
+(test 'x (index-key-of '(x (? y) z)))
 
-(define (prompt-for-input string)
-  (newline) (display string) (newline))
+(define (indexable? pat)
+  (let ((head (car pat)))
+    (or (var? head) (constant-symbol? head))))
+(test #t (indexable? '((? x) y z)))
+(test #t (indexable? '(a b c)))
+(test #f (indexable? '((u v) w)))
 
+(define (table-put table key-1 key-2 value)
+  ((table 'insert-proc!) key-1 key-2 value))
 
-;;;;stream support from chapter 3
+(define (table-get table key-1 key-2)
+  ((table 'lookup-proc) key-1 key-2))
 
-(define (stream-map proc s)
-  (if (stream-null? s)
-      the-empty-stream
-      (cons-stream (proc (stream-car s))
-                   (stream-map proc (stream-cdr s)))))
+(define (get-stream table key-1 key-2)
+  (or (table-get table key-1 key-2) the-empty-stream))
 
-(define (stream-for-each proc s)
-  (if (stream-null? s)
-      'done
-      (begin (proc (stream-car s))
-             (stream-for-each proc (stream-cdr s)))))
+(define (store-assertion-in-index assertion table)
+  (if (indexable? assertion)
+      (let ((index (index-key-of assertion)))
+        (let ((prev (get-stream table index 'assertion-stream)))
+          (table-put table index 'assertion-stream
+                     (cons-stream assertion prev))))))
 
-(define (display-stream s)
-  (stream-for-each display-line s))
-(define (display-line x)
-  (newline)
-  (display x))
+(test-group
+ "store-assertion-in-index"
+ (test
+  '(((a b c) (a d e)) ((b b c)))
+  (let ((table (make-table)))
+    (store-assertion-in-index '(a d e) table)
+    (store-assertion-in-index '(a b c) table)
+    (store-assertion-in-index '(b b c) table)
+    (store-assertion-in-index '((? x) b c) table)
+    (list
+     (stream->list
+      ((table 'lookup-proc) 'a 'assertion-stream))
+     (stream->list
+      ((table
+        'lookup-proc) 'b 'assertion-stream))))))
 
-(define (stream-filter pred stream)
-  (cond ((stream-null? stream) the-empty-stream)
-        ((pred (stream-car stream))
-         (cons-stream (stream-car stream)
-                      (stream-filter pred
-                                     (stream-cdr stream))))
-        (else (stream-filter pred (stream-cdr stream)))))
+(define (store-rule-in-index rule table)
+  (if (indexable? (conclusion rule))
+      (let ((key (index-key-of (conclusion rule))))
+        (let ((old (get-stream table key 'rule-stream)))
+          (table-put table key 'rule-stream
+                     (cons-stream rule old))))))
 
-(define (stream-append s1 s2)
-  (if (stream-null? s1)
-      s2
-      (cons-stream (stream-car s1)
-                   (stream-append (stream-cdr s1) s2))))
+(test-group
+ "store-rule-in-index"
+ (test
+  '((rule (f (? a)) ((? a) b c d))
+    (rule (f (? a)))
+    (rule (f (? x) (? y)) (x y z)))
+  (let ((table (make-table)))
+    (store-rule-in-index '(rule (f (? x) (? y)) (x y z)) table)
+    (store-rule-in-index '(rule (f (? a))) table)
+    (store-rule-in-index '(rule (f (? a)) ((? a) b c d)) table)
+    (store-rule-in-index '(rule (i (? a)) (x b c d)) table)
+    (stream->list (table-get table 'f 'rule-stream))))
+ (test
+  '((rule ((? a)) (b c)))
+  (let ((table (make-table)))
+    (store-rule-in-index '(rule ((? a)) (b c)) table)
+    (stream->list (table-get table '? 'rule-stream)))))
 
-(define (interleave s1 s2)
-  (if (stream-null? s1)
-      s2
-      (cons-stream (stream-car s1)
-                   (interleave s2 (stream-cdr s1)))))
+(define (make-rule-counter)
+  (let ((counter 0))
+    (lambda (request)
+      (cond ((eq? request 'new-rule-application-id)
+             (set! counter (+ counter 1))
+             (- counter 1))))))
 
-;;;;table support from chapter 3, section 3.3.3 (local tables)
+(test-group
+ "make-rule-counter"
+ (test
+  '(0 1)
+  (let ((rc (make-rule-counter)))
+    (let ((x (rc 'new-rule-application-id)))
+      (let ((y (rc 'new-rule-application-id)))
+        (list x y))))))
 
-(define (make-table)
-  (let ((local-table (list '*table*)))
-    (define (lookup key-1 key-2)
-      (let ((subtable (assoc key-1 (cdr local-table))))
-        (if subtable
-            (let ((record (assoc key-2 (cdr subtable))))
-              (if record
-                  (cdr record)
-                  false))
-            false)))
-    (define (insert! key-1 key-2 value)
-      (let ((subtable (assoc key-1 (cdr local-table))))
-        (if subtable
-            (let ((record (assoc key-2 (cdr subtable))))
-              (if record
-                  (set-cdr! record value)
-                  (set-cdr! subtable
-                            (cons (cons key-2 value)
-                                  (cdr subtable)))))
-            (set-cdr! local-table
-                      (cons (list key-1
-                                  (cons key-2 value))
-                            (cdr local-table)))))
-      'ok)
-    (define (dispatch m)
-      (cond ((eq? m 'lookup-proc) lookup)
-            ((eq? m 'insert-proc!) insert!)
-            (else (error "unknown operation -- table" m))))
+(define (make-database)
+  (let ((the-assertions the-empty-stream)
+        (the-rules the-empty-stream)
+        (index (make-table))
+        (rule-counter (make-rule-counter)))
+    (define (dispatch request)
+      (cond ((eq? request 'add-assertion!)
+             (lambda (assertion)
+               (let ((old the-assertions))
+                 (store-assertion-in-index assertion index)
+                 (set! the-assertions
+                       (cons-stream assertion old))
+                 'ok)))
+            ((eq? request 'get-all-assertions)
+             the-assertions)
+            ((eq? request 'add-rule!)
+             (lambda (rule)
+               (let ((old the-rules))
+                 (store-rule-in-index rule index)
+                 (set! the-rules (cons-stream rule old))
+                 'ok)))
+            ((eq? request 'get-all-rules)
+             the-rules)
+            ((eq? request 'get-index) index)
+            ((eq? request 'add-rule-or-assertion!)
+             (lambda (assertion)
+               (if (tagged-list? assertion 'rule)
+                   ((dispatch 'add-rule!) assertion)
+                   ((dispatch 'add-assertion!) assertion))))
+            ((eq? request 'new-rule-application-id)
+             (rule-counter 'new-rule-application-id))
+            (else (error "unknown request -- database" request))))
     dispatch))
 
-;;;; from instructor's manual
+(test-group
+ "database"
+ (test
+  '(#t ((d e f g) (a b c)))
+  (let ((db (make-database)))
+    ((db 'add-assertion!) '(a b c))
+    ((db 'add-assertion!) '(d e f g))
+    (let ((a (db 'get-all-assertions)))
+      (list (promise? (cdr a)) (stream->list a)))))
+ (test
+  '(#t ((d e f g) (a b c)) ((a b c)))
+  (let ((db (make-database)))
+    ((db 'add-assertion!) '(a b c))
+    ((db 'add-assertion!) '(d e f g))
+    (let ((a (db 'get-all-assertions)))
+      (list (promise? (cdr a)) (stream->list a)
+            (stream->list
+             (table-get (db 'get-index) 'a 'assertion-stream))))))
+ (test
+  '(#t ((rule (r (? x) (? y))) (rule (s) (t u v)))
+       ((rule (r (? x) (? y)))))
+  (let ((db (make-database)))
+    ((db 'add-rule!) '(rule (s) (t u v)))
+    ((db 'add-rule!) '(rule (r (? x) (? y))))
+    (let ((a (db 'get-all-rules)))
+      (list (promise? (cdr a)) (stream->list a)
+            (stream->list
+             (table-get (db 'get-index) 'r 'rule-stream))))))
+ (let ((rule-0 '(rule (s (? x) (? y)) (t u)))
+       (rule-1 '(rule (a (? z)) (b)))
+       (assert-0 '(a b c))
+       (assert-1 '(d e f)))
+   (test
+    (list assert-1 assert-0 rule-1 rule-0)
+    (let ((db (make-database)))
+      ((db 'add-rule-or-assertion!) rule-0)
+      ((db 'add-rule-or-assertion!) assert-0)
+      ((db 'add-rule-or-assertion!) rule-1)
+      ((db 'add-rule-or-assertion!) assert-1)
+      (append (stream->list (db 'get-all-assertions))
+              (stream->list (db 'get-all-rules))))))
+ (test
+  '(0 1)
+  (let ((db (make-database)))
+    (let* ((id-0 (db 'new-rule-application-id))
+           (id-1 (db 'new-rule-application-id)))
+      (list id-0 id-1)))))
 
-(define get '())
+(define (get-indexed-rules pattern database)
+  (stream-append
+   (get-stream (database 'get-index)
+               (index-key-of pattern)
+               'rule-stream)
+   (get-stream (database 'get-index)
+               '?
+               'rule-stream)))
 
-(define put '())
+(define (fetch-rules pattern database)
+  (if (use-index? pattern)
+      (get-indexed-rules pattern database)
+      (database 'get-all-rules)))
 
-(define (list->stream given-list)
-  (if (null? given-list)
-      the-empty-stream
-      (cons-stream (car given-list)
-                   (list->stream (cdr given-list)))))
+(test-group
+ "fetch-rules"
+ (test
+  '((rule (h) i)
+    (rule ((? a) f (? b)) c) (rule ((? x) g (? y)) z))
+  (let ((db (make-database)))
+    ((db 'add-rule!) '(rule ((? x) g (? y)) z))
+    ((db 'add-rule!) '(rule (((a b)) c) d))
+    ((db 'add-rule!) '(rule ((? a) f (? b)) c))
+    ((db 'add-rule!) '(rule (h) i))
+    (stream->list (fetch-rules '(h) db)))))
 
-(define (initialize-data-base rules-and-assertions)
-  (define (deal-out r-and-a rules assertions)
-    (cond ((null? r-and-a)
-           (set! the-assertions (list->stream assertions))
-           (set! the-rules (list->stream rules))
-           'done)
-          (else
-           (let ((s (query-syntax-process (car r-and-a))))
-             (cond ((rule? s)
-                    (store-rule-in-index s)
-                    (deal-out (cdr r-and-a)
-                              (cons s rules)
-                              assertions))
-                   (else
-                    (store-assertion-in-index s)
-                    (deal-out (cdr r-and-a)
-                              rules
-                              (cons s assertions))))))))
-  (let ((operation-table (make-table)))
-    (set! get (operation-table 'lookup-proc))
-    (set! put (operation-table 'insert-proc!)))
-  (put 'and 'qeval conjoin)
-  (put 'or 'qeval disjoin)
-  (put 'not 'qeval negate)
-  (put 'lisp-value 'qeval lisp-value)
-  (put 'always-true 'qeval always-true)
-  (deal-out rules-and-assertions '() '()))
+(define (fetch-assertions pattern database)
+  (if (use-index? pattern)
+      (get-stream (database 'get-index)
+                  (index-key-of pattern)
+                  'assertion-stream)
+      (database 'get-all-assertions)))
 
-;; do following to reinit the data base from microshaft-data-base
-;;  in scheme (not in the query driver loop)
-;; (initialize-data-base microshaft-data-base)
+(test-group
+ "fetch-assertions"
+ (test
+  '(((a d e f) (a b c))
+    ((w x y z) ((d e) f) (a d e f) (a b c)))
+  (let ((db (make-database)))
+    ((db 'add-assertion!) '(a b c))
+    ((db 'add-assertion!) '(a d e f))
+    ((db 'add-assertion!) '((d e) f))
+    ((db 'add-assertion!) '(w x y z))
+    (list (stream->list (fetch-assertions '(a) db))
+          (stream->list
+           (fetch-assertions '((? x) y) db))))))
+
+(define (depends-on? exp-arg var frame)
+  (define (tree-walk exp)
+    (cond ((var? exp)
+           (or (equal? exp var)
+               (let ((binding (binding-in-frame exp frame)))
+                 (and binding
+                      (tree-walk (binding-value binding))))))
+          ((pair? exp)
+           (or (tree-walk (car exp)) (tree-walk (cdr exp))))
+          (else false)))
+  (tree-walk exp-arg))
+
+(test-group
+ "depends-on?"
+ (test true (depends-on? '((? x)) '(? x) '()))
+ (test false (depends-on? '(? y) '(? x) '()))
+ (test false (depends-on? '((? y) ((? z))) '(? x) '()))
+ (test true
+       (depends-on? '(? y) '(? x) '(((? y) . (? x)))))
+ (test true
+       (depends-on? '(a b c (? y)) '(? x)
+                    '(((? y) . (f g (h (? x))))))))
+
+(define (extend-if-possible var val frame)
+  (let ((binding (binding-in-frame var frame)))
+    (cond (binding
+           (unify-match
+            (binding-value binding) val frame))
+          ((var? val)
+           (let ((binding (binding-in-frame val frame)))
+             (if binding
+                 (unify-match
+                  var (binding-value binding) frame)
+                 (extend var val frame))))
+          ((depends-on? val var frame)
+           'failed)
+          (else (extend var val frame)))))
+
+(define (unify-match p1 p2 frame)
+  (cond ((eq? frame 'failed) 'failed)
+        ((equal? p1 p2) frame)
+        ((var? p1)
+         (extend-if-possible p1 p2 frame))
+        ((var? p2)
+         (extend-if-possible p2 p1 frame))
+        ((and (pair? p1) (pair? p2))
+         (unify-match (cdr p1)
+                      (cdr p2)
+                      (unify-match (car p1)
+                                   (car p2)
+                                   frame)))
+        (else 'failed)))
+
+(test-group
+ "extend-if-possible"
+ (test
+  '(((? x) . 0))
+  (extend-if-possible '(? x) 0 '()))
+ (test
+  'failed
+  (extend-if-possible '(? y) 1 '(((? y) . 0))))
+ (test
+  '(((? y) . b) ((? x) . (f (? y))))
+  (extend-if-possible '(? x) '(f b)
+                      '(((? x) . (f (? y))))))
+ (test
+  'failed
+  (extend-if-possible '(? x) '(? y)
+                      '(((? y) . (z (? x))))))
+ (test
+  '(((? x) . (? x)))
+  (extend-if-possible '(? x) '(? x) '()))
+ (test
+  '(((? y) . (? x)))
+  (extend-if-possible '(? x) '(? y) '(((? y) . (? x)))))
+ (test
+  'failed
+  (extend-if-possible '(? x) '(? y)
+                      '(((? y) . (a (? x)))))))
+
+(test-group
+ "unify-match"
+ (test
+  '(((? x) . a))
+  (unify-match '((? x)) '(a) '()))
+ (test
+  'failed
+  (unify-match '(? x) 0 'failed))
+ (test
+  '(((? x) . (? y)))
+  (unify-match '(? x) '(? y) '()))
+ (test
+  '(((? x) . a))
+  (unify-match '((? x) a) '(a (? x)) '()))
+ (test
+  '(((? y) . a) ((? x) . a))
+  (unify-match '((? x) (? y)) '(a (? x)) '()))
+ (test
+  '(((? x) . a))
+  (unify-match '(? x) 'a '(((? x) . a))))
+ (test
+  '(((? y) . a) ((? x) . a))
+  (unify-match '(? x) '(? y) '(((? x) . a))))
+ (test
+  'failed
+  (unify-match 'b '(? x) '(((? x) . a))))
+ (test
+  'failed
+  (unify-match '((? x) (? x)) '((? y) (a (? y))) '()))
+ (test
+  '(((? x) . (? y)))
+  (unify-match '((? x) (? x)) '((? y) (? y)) '()))
+ (test
+  '(((? y) . a) ((? z) . a) ((? x) . (? y)))
+  (unify-match '((? x) a (? y)) '((? y) (? z) a) '()))
+ (test
+  'failed
+  (unify-match '((? x) (? y) a) '((? x) b (? y)) '()))
+ (test
+  '(((? z) . c) ((? y) . b) ((? x) a (? y) c))
+  (unify-match '((? x) (? x))
+               '((a (? y) c) (a b (? z)))
+               '())))
+
+(define (make-new-variable var id)
+  (cons '? (cons id (cdr var))))
+(test '(? 0 xyz) (make-new-variable '(? xyz) 0))
+
+(define (rename-variables exp id)
+  (cond ((var? exp)
+         (make-new-variable exp id))
+        ((pair? exp)
+         (cons (rename-variables (car exp) id)
+               (rename-variables (cdr exp) id)))
+        (else exp)))
+(test
+ '(rule (a (? 0 x) (? 0 y)) ((? 0 x) b (? 0 y)))
+ (rename-variables
+  '(rule (a (? x) (? y)) ((? x) b (? y)))
+  0))
+
+(define (instantiate exp frame unbound-var-handler)
+  (cond ((null? exp) '())
+        ((var? exp)
+         (let ((t (binding-in-frame exp frame)))
+           (if t
+               (instantiate
+                (cdr t) frame unbound-var-handler)
+               (unbound-var-handler exp frame))))
+        ((pair? exp)
+         (cons (instantiate
+                (car exp) frame unbound-var-handler)
+               (instantiate
+                (cdr exp) frame unbound-var-handler)))
+        (else exp)))
+
+(test-group
+ "instantiate"
+ (test
+  '()
+  (instantiate '() '() '()))
+ (test
+  '0
+  (instantiate '(? x) '(((? x) . 0)) '()))
+ (test
+  '((3 a) (3 b) 3)
+  (instantiate
+   '(((? x) a) ((? y) b) (? x))
+   '(((? x) . (? y)) ((? y) . 3)) '()))
+ (let ((frame (extend '(? y) 3 '())))
+   (test
+    (list '(? x) frame)
+    (instantiate '(? x) frame
+                 (lambda (var frame)
+                   (list var frame))))))
+
+(define (extend-if-consistent var dat frame)
+  (let ((binding (binding-in-frame var frame)))
+    (if binding
+        (pattern-match (binding-value binding)
+                       dat
+                       frame)
+        (extend var dat frame))))
+
+(define (pattern-match pattern data frame)
+  (cond ((eq? frame 'failed) 'failed)
+        ((equal? pattern data) frame)
+        ((var? pattern)
+         (extend-if-consistent pattern data frame))
+        ((and (pair? pattern) (pair? data))
+         (pattern-match (cdr pattern)
+                        (cdr data)
+                        (pattern-match (car pattern)
+                                       (car data)
+                                       frame)))
+        (else 'failed)))
+
+(test-group
+ "extend-if-consistent"
+ (test
+  '(((? x) . 0))
+  (extend-if-consistent '(? x) 0 '()))
+ (test
+  'failed
+  (extend-if-consistent '(? y) 1 '(((? y) . 0))))
+ (test
+  '(((? y) . b) ((? x) . (f (? y))))
+  (extend-if-consistent '(? x) '(f b)
+                        '(((? x) . (f (? y)))))))
+
+(test-group
+ "pattern-match"
+ (test
+  '(((? x) . a))
+  (pattern-match '((? x)) '(a) '()))
+ (test
+  'failed
+  (pattern-match '(?x) 0 'failed)))
+
+(define (find-assertions pattern frame database)
+  (stream-filter
+   (lambda (x)
+     (not (eq? x 'failed)))
+   (stream-map
+    (lambda (assertion)
+      (pattern-match pattern assertion frame))
+    (fetch-assertions pattern database))))
+
+(test-group
+ "find-assertions"
+ (test
+  '((((? y) . 2) ((? x) . 0)) (((? y) . 4) ((? x) . 2)))
+  (let ((db (make-database)))
+    ((db 'add-assertion!) '(+ 0 1 1))
+    ((db 'add-assertion!) '(+ 2 2 4))
+    ((db 'add-assertion!) '(+ 2 0 2))
+    (stream->list
+     (find-assertions '(+ 2 (? x) (? y)) '() db)))))
+
+(define (simple-query query-pattern frame-stream database)
+  (stream-flatmap
+   (lambda (frame)
+     (stream-append-delayed
+      (find-assertions query-pattern frame database)
+      (delay (apply-rules query-pattern frame database))))
+   frame-stream))
+
+(define (qeval query frame-stream database)
+  (let ((qproc (get (type query) 'qeval)))
+    (if qproc
+        (qproc (contents query) frame-stream database)
+        (simple-query query frame-stream database))))
+
+(define (apply-rules pattern frame database)
+  (stream-flatmap (lambda (rule)
+                    (apply-a-rule
+                     rule pattern frame database))
+                  (fetch-rules pattern database)))
+
+(define (apply-a-rule rule query-pattern query-frame db)
+  (let ((clean-rule (rename-variables
+                     rule (db 'new-rule-application-id))))
+    (let ((unify-result
+           (unify-match query-pattern
+                        (conclusion clean-rule)
+                        query-frame)))
+      (if (eq? unify-result 'failed)
+          the-empty-stream
+          (qeval (rule-body clean-rule)
+                 (singleton-stream unify-result)
+                 db)))))
+
+(test-group
+ "simple-query"
+ (test
+  '()
+  (stream->list
+   (simple-query '(a b c) '(()) (make-database))))
+ (test
+  '((((? x) . 2)))
+  (let ((db (make-database)))
+    ((db 'add-assertion!) '(inc 0 1))
+    ((db 'add-assertion!) '(inc 1 2))
+    ((db 'add-assertion!) '(inc 2 3))
+    (stream->list
+     (simple-query '(inc 1 (? x)) '(()) db))))
+ (test
+  '(((((? 0 z) . p) ((? 0 y) . q))) ())
+  (let ((db (make-database)))
+    ((db 'add-assertion!) '(inc 0 1))
+    ((db 'add-rule!) '(rule (r (? y) (? z)) (a (? y))))
+    ((db 'add-assertion!) '(a q))
+    (list (stream->list
+           (simple-query '(r q p) '(()) db))
+          (stream->list
+           (simple-query '(r s s) '(()) db))))))
+
+(define (query-syntax-process exp)
+  (cond ((and (symbol? exp)
+              (equal? (string-ref (symbol->string exp) 0)
+                      #\?))
+         (list '?
+               (string->symbol
+                (apply string
+                       (cdr
+                        (string->list (symbol->string exp)))))))
+        ((pair? exp)
+         (cons (query-syntax-process (car exp))
+               (query-syntax-process (cdr exp))))
+        (else exp)))
+
+(test
+ '((? x) (((? w)) (? y)) z)
+ (query-syntax-process '(?x ((?w) ?y) z)))
+
+(define (database-query query db)
+  (let ((query (query-syntax-process query)))
+    (stream->list
+     (stream-map (lambda (frame)
+                   (instantiate query frame '()))
+                 (qeval query '(()) db)))))
+
+(define (qeval-and exps frame-stream database)
+  (if (null? exps)
+      frame-stream
+      (qeval-and (cdr exps)
+                 (qeval (car exps) frame-stream database)
+                 database)))
+
+(put 'and 'qeval qeval-and)
+
+(test-group
+ "and"
+ (test
+  '((and (even 2) (prime 2)))
+  (let ((db (make-database)))
+    ((db 'add-assertion!) '(prime 2))
+    ((db 'add-assertion!) '(prime 3))
+    ((db 'add-assertion!) '(prime 5))
+    ((db 'add-assertion!) '(even 2))
+    (database-query '(and (even ?x) (prime ?x)) db)))
+ (test
+  '((/6 6) (/6 0))
+  (let ((db (make-database)))
+    ((db 'add-assertion!) '(/3 0))
+    ((db 'add-assertion!) '(/3 3))
+    ((db 'add-assertion!) '(/3 6))
+    ((db 'add-assertion!) '(/2 0))
+    ((db 'add-assertion!) '(/2 2))
+    ((db 'add-assertion!) '(/2 4))
+    ((db 'add-assertion!) '(/2 6))
+    ((db 'add-rule!)
+     '(rule (/6 (? x))
+            (and (/3 (? x))
+                 (and (/2 (? x)) (/2 (? x)))
+                 (/3 0))))
+    (database-query '(/6 ?x) db)))
+ (test
+  '((/6 6) (/6 0))
+  (let ((db (make-database)))
+    ((db 'add-assertion!) '(/3 0))
+    ((db 'add-assertion!) '(/3 3))
+    ((db 'add-assertion!) '(/3 6))
+    ((db 'add-assertion!) '(/2 0))
+    ((db 'add-assertion!) '(/2 2))
+    ((db 'add-assertion!) '(/2 4))
+    ((db 'add-assertion!) '(/2 6))
+    ((db 'add-rule!)
+     '(rule (/6 (? x))
+            (and (/3 (? x))
+                 (and (/2 (? x)) (/2 (? x)))
+                 (/3 0))))
+    (database-query '(/6 ?x) db))))
+
+(define (disjoin disjuncts frame-stream database)
+  (stream-flatmap
+   (lambda (disjunct)
+     (qeval disjunct frame-stream database))
+   disjuncts))
+
+(put 'always-true 'qeval
+     (lambda (exps frame-stream database)
+       frame-stream))
+
+(test
+ '((always-true))
+ (database-query '(always-true) (make-database)))
+
+(test-group
+ "disjoin"
+ (test
+  '(())
+  (let ((db (make-database)))
+    ((db 'add-assertion!) '(even 0))
+    (stream->list (disjoin '((even 0)) '(()) db))))
+ (test
+  '()
+  (let ((db (make-database)))
+    ((db 'add-assertion!) '(even 0))
+    (stream->list (disjoin '((even 1)) '(()) db))))
+ (test
+  '((((? x) . 2)) (((? y) . 3))
+    (((? x) . 0)) (((? y) . 1)))
+  (let ((db (make-database)))
+    ((db 'add-assertion!) '(even 0))
+    ((db 'add-assertion!) '(odd 1))
+    ((db 'add-assertion!) '(even 2))
+    ((db 'add-assertion!) '(odd 3))
+    (stream->list
+     (disjoin '((even (? x)) (odd (? y)))
+              '(()) db)))))
+
+(put 'or 'qeval disjoin)
+
+(test
+ '((same a a))
+ (let ((db (make-database)))
+   ((db 'add-rule!) '(rule (same (? x) (? x))))
+   (database-query '(same a a) db)))
+
+(test
+ '((plus 2 2 4))
+ (let ((db (make-database)))
+   ((db 'add-assertion!) '(inc 0 1))
+   ((db 'add-assertion!) '(inc 1 2))
+   ((db 'add-assertion!) '(inc 2 3))
+   ((db 'add-assertion!) '(inc 3 4))
+   ((db 'add-assertion!) '(inc 4 5))
+   ((db 'add-rule!) '(rule (same (? x) (? x))))
+   ((db 'add-rule!)
+    '(rule (plus (? a) (? b) (? c))
+           (or (and (same (? a) 0)
+                    (same (? b) (? c)))
+               (and (inc (? d) (? a))
+                    (inc (? e) (? c))
+                    (plus (? d) (? b) (? e))))))
+   (database-query '(plus 2 2 ?x) db)))
+
+(define (lisp-value exps frame-stream database)
+  (let ((args (cdr exps))
+        (predicate (eval (car exps)
+                         (scheme-report-environment 5))))
+    (stream-filter
+     (lambda (frame)
+       (apply predicate
+              (map
+               (lambda (exp)
+                 (instantiate exp frame '()))
+               args)))
+     frame-stream)))
+
+(put 'lisp-value 'qeval lisp-value)
+
+(test
+ '(())
+ (stream->list
+  (lisp-value '(< 3 4) '(()) (make-database))))
+(test
+ '()
+ (lisp-value '(symbol? 0) '(()) (make-database)))
+(test
+ '((((? x) . 0) ((? y) . 1)))
+ (stream->list
+  (lisp-value '(> (? y) (? x)) '((((? x) . 0) ((? y) . 1)))
+              (make-database))))
+
+(define (qeval-not exps frame-stream database)
+  (stream-filter
+   (lambda (frame)
+     (stream-null?
+      (qeval (car exps)
+             (singleton-stream frame)
+             database)))
+   frame-stream))
+
+(put 'not 'qeval qeval-not)
+
+(test
+ '((((? x) . 1)))
+ (let ((db (make-database)))
+   ((db 'add-assertion!) '(even 0))
+   ((db 'add-assertion!) '(even 2))
+   ((db 'add-assertion!) '(even 4))
+   (stream->list
+    (qeval-not
+     '((even (? x)))
+     '((((? x) . 0)) (((? x) . 1)) (((? x) . 2)))
+     db))))
+
+(test-end)
 
 (define microshaft-data-base
   '((address (bitdiddle ben) (slumerville (ridge road) 10))
@@ -660,7 +886,43 @@
           (or (supervisor ?staff-person ?boss)
               (and (supervisor ?staff-person ?middle-manager)
                    (outranked-by ?middle-manager ?boss))))))
-(initialize-data-base microshaft-data-base)
 
 (set! debug #t)
 
+(define (do-queries statements queries)
+  (let ((db (make-database)))
+    (for-each (lambda (stmt)
+                (let ((stmt (query-syntax-process stmt)))
+                  ((db 'add-rule-or-assertion!)
+                   (query-syntax-process stmt))))
+              statements)
+    (for-each
+     (lambda (query)
+       (newline)
+       (display ";;; query input:")
+       (newline)
+       (display query)
+       (newline)
+       (newline)
+       (display ";;; query results:")
+       (newline)
+       (for-each
+        (lambda (query-result)
+          (display query-result)
+          (newline))
+        (database-query query db)))
+     queries)))
+
+(do-queries
+ microshaft-data-base
+ '((supervisor ?x (bitdiddle ben))
+   (job ?x (accounting . ?y))
+   (address ?name (slumerville . ?x))
+   (and (job ?person (computer programmer))
+        (address ?person ?where))
+   (or (supervisor ?x (bitdiddle ben))
+       (supervisor ?x (hacker alyssa p)))
+   (and (supervisor ?x (bitdiddle ben))
+        (not (job ?x (computer programmer))))
+   (and (salary ?person ?amount)
+        (lisp-value > ?amount 30000))))
