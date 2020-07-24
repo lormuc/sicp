@@ -640,14 +640,18 @@
  '((? x) (((? w)) (? y)) z)
  (query-syntax-process '(?x ((?w) ?y) z)))
 
-(define (database-query query db)
+(define (database-query-stream query db)
   (let ((query (query-syntax-process query)))
-    (stream->list
-     (stream-map (lambda (frame)
-                   (instantiate query frame
-                                (lambda (var frame)
-                                  (contract-question-mark var))))
-                 (qeval query (singleton-stream '()) db)))))
+    (stream-map
+     (lambda (frame)
+       (instantiate query frame
+                    (lambda (var frame)
+                      (contract-question-mark var))))
+     (qeval query (singleton-stream '()) db))))
+
+(define (database-query query db)
+  (stream->list
+   (database-query-stream query db)))
 
 (define (qeval-and exps frame-stream database)
   (if (null? exps)
@@ -1012,3 +1016,58 @@
            (rule (?x next-to ?y in (?x ?y . ?u)))))
  '((?x next-to ?y in (1 (2 3) 4))
    (?x next-to 1 in (2 1 3 1))))
+
+(define rule-last-pair
+  '((rule (last-pair (?x) (?x)))
+    (rule (last-pair (?x . ?y) ?z)
+          (last-pair ?y ?z))))
+
+(test
+ '(((last-pair (3) (3)))
+   ((last-pair (1 2 3) (3)))
+   ((last-pair (2 3) (3))))
+ (let ((db (make-database)))
+   (database-add db rule-last-pair)
+   (list
+    (database-query '(last-pair (3) ?x) db)
+    (database-query '(last-pair (1 2 3) ?x) db)
+    (database-query '(last-pair (2 ?x) (3)) db))))
+
+(define genealogy
+  '((son adam cain) (son cain enoch)
+    (son enoch irad) (son irad mehujael)
+    (son mehujael methushael)
+    (son methushael lamech)
+    (wife lamech ada) (son ada jabal)
+    (son ada jubal)))
+
+(define son-rules
+  '((rule (grandson ?x ?y)
+          (and (son ?x ?z)
+               (son ?z ?y)))
+    (rule (son ?man ?son)
+          (and (wife ?man ?woman)
+               (son ?woman ?son)))))
+
+(test
+ '(((grandson adam enoch))
+   ()
+   ((son lamech jabal))
+   ())
+ (let ((db (make-database)))
+   (database-add db son-rules)
+   (database-add db genealogy)
+   (list
+    (database-query '(grandson adam enoch) db)
+    (database-query '(grandson adam cain) db)
+    (database-query '(son lamech jabal) db)
+    (database-query '(son lamech cain) db)
+    (database-query '(grandson cain ?x) db)
+    (database-query '(son lamech ?x) db)
+    (database-query '(grandson methushael ?x) db))))
+
+(do-queries
+ (append genealogy son-rules)
+ '((grandson cain ?x)
+   (son lamech ?x)
+   (grandson methushael ?x)))
