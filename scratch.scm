@@ -644,8 +644,10 @@
   (let ((query (query-syntax-process query)))
     (stream->list
      (stream-map (lambda (frame)
-                   (instantiate query frame '()))
-                 (qeval query '(()) db)))))
+                   (instantiate query frame
+                                (lambda (var frame)
+                                  (contract-question-mark var))))
+                 (qeval query (singleton-stream '()) db)))))
 
 (define (qeval-and exps frame-stream database)
   (if (null? exps)
@@ -803,6 +805,16 @@
 (put 'not 'qeval qeval-not)
 
 (test
+ '((and (a 0) (not (b ?y))))
+ (let ((db (make-database)))
+   ((db 'add-assertion!)
+    '(a 0))
+   (database-query
+    '(and (a ?x)
+          (not (b ?y)))
+    db)))
+
+(test
  '((((? x) . 1)))
  (let ((db (make-database)))
    ((db 'add-assertion!) '(even 0))
@@ -925,4 +937,12 @@
    (and (supervisor ?x (bitdiddle ben))
         (not (job ?x (computer programmer))))
    (and (salary ?person ?amount)
-        (lisp-value > ?amount 30000))))
+        (lisp-value > ?amount 30000))
+   (and (supervisor ?x (bitdiddle ben))
+        (address ?x ?y))
+   (and (salary (bitdiddle ben) ?s0)
+        (salary ?x ?s1)
+        (lisp-value < ?s1 ?s0))
+   (and (supervisor ?person ?supervisor)
+        (job ?supervisor ?job)
+        (not (job ?supervisor (computer . ?...))))))
