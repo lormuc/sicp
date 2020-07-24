@@ -904,9 +904,8 @@
 (define (do-queries statements queries)
   (let ((db (make-database)))
     (for-each (lambda (stmt)
-                (let ((stmt (query-syntax-process stmt)))
-                  ((db 'add-rule-or-assertion!)
-                   (query-syntax-process stmt))))
+                ((db 'add-rule-or-assertion!)
+                 (query-syntax-process stmt)))
               statements)
     (for-each
      (lambda (query)
