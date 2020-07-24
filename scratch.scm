@@ -948,3 +948,41 @@
                             (?division . ?t1)))))))
   microshaft-data-base)
  '((big-shot ?x ?y)))
+
+(define rule-meeting-time
+  '(rule (meeting-time ?person ?day-and-time)
+         (and (job ?person (?division . ?...))
+              (or (meeting ?division ?day-and-time)
+                  (meeting whole-company ?day-and-time)))))
+
+(test
+ '(((meeting-time (reasoner louis) (monday 10-am)))
+   ()
+   ((meeting-time (reasoner louis) (wednesday 4-pm))))
+ (let ((db (make-database)))
+   (database-add
+    db
+    '((meeting computer (monday 10-am))
+      (meeting computer (wednesday 3-pm))
+      (meeting administration (friday 1-pm))
+      (meeting whole-company (wednesday 4-pm))
+      (job (reasoner louis) (computer programmer trainee))))
+   (database-add db (list rule-meeting-time))
+   (list
+    (database-query
+     '(meeting-time (reasoner louis) (monday ?t)) db)
+    (database-query
+     '(meeting-time (reasoner louis) (friday 1-pm)) db)
+    (database-query
+     '(meeting-time (reasoner louis) (wednesday 4-pm)) db))))
+
+(do-queries
+ (append microshaft-data-base
+         '((meeting accounting (monday 9-am))
+           (meeting administration (monday 10-am))
+           (meeting computer (wednesday 3-pm))
+           (meeting administration (friday 1-pm))
+           (meeting whole-company (wednesday 4-pm)))
+         (list rule-meeting-time))
+ '((meeting ?x (friday ?y))
+   (meeting-time (hacker alyssa p) (wednesday ?t))))
