@@ -826,6 +826,22 @@
      '((((? x) . 0)) (((? x) . 1)) (((? x) . 2)))
      db))))
 
+(define (database-add database statements)
+  (for-each (lambda (statement)
+              ((database 'add-rule-or-assertion!)
+               (query-syntax-process statement)))
+            statements))
+
+(test
+ '((inc-inc 0 2))
+ (let ((db (make-database)))
+   (database-add db '((inc 0 1)
+                      (inc 1 2)
+                      (rule (inc-inc ?a ?b)
+                            (and (inc ?a ?c)
+                                 (inc ?c ?b)))))
+   (database-query '(inc-inc ?x ?y) db)))
+
 (test-end)
 
 (define microshaft-data-base
@@ -903,10 +919,7 @@
 
 (define (do-queries statements queries)
   (let ((db (make-database)))
-    (for-each (lambda (stmt)
-                ((db 'add-rule-or-assertion!)
-                 (query-syntax-process stmt)))
-              statements)
+    (database-add db statements)
     (for-each
      (lambda (query)
        (newline)
@@ -925,15 +938,13 @@
      queries)))
 
 (do-queries
- (cons '(rule (can-replace ?p0 ?p1)
-              (and (job ?p0 ?j0)
-                   (job ?p1 ?j1)
-                   (or (same ?j0 ?j1)
-                       (can-do-job ?j0 ?j1))
-                   (not (same ?p0 ?p1))))
-       microshaft-data-base)
- '((can-replace ?x (fect cy d))
-   (and (can-replace ?x ?y)
-        (salary ?x ?xs)
-        (salary ?y ?ys)
-        (lisp-value < ?xs ?ys))))
+ (cons
+  '(rule
+    (big-shot ?person ?division)
+    (and (job ?person (?division . ?t0))
+         (or (not (supervisor ?person ?supervisor))
+             (and (supervisor ?person ?supervisor)
+                  (not (job ?supervisor
+                            (?division . ?t1)))))))
+  microshaft-data-base)
+ '((big-shot ?x ?y)))
