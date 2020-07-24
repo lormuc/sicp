@@ -986,3 +986,21 @@
          (list rule-meeting-time))
  '((meeting ?x (friday ?y))
    (meeting-time (hacker alyssa p) (wednesday ?t))))
+
+(do-queries
+ (append microshaft-data-base
+         '((id (bitdiddle ben) 0)
+           (id (hacker alyssa p) 1)
+           (id (fect cy d) 2)
+           (id (tweakit lem e) 3)
+           (id (reasoner louis) 4)
+           (id (warbucks oliver) 5)
+           (id (scrooge eben) 6)
+           (id (cratchet robert 7))
+           (id (aull dewitt) 8)
+           (rule (my-lives-near ?x ?y)
+                 (and (lives-near ?x ?y)
+                      (id ?x ?x-id)
+                      (id ?y ?y-id)
+                      (lisp-value < ?x-id ?y-id)))))
+ '((my-lives-near ?x ?y)))
