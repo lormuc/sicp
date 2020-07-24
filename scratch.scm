@@ -1004,3 +1004,11 @@
                       (id ?y ?y-id)
                       (lisp-value < ?x-id ?y-id)))))
  '((my-lives-near ?x ?y)))
+
+(do-queries
+ (append microshaft-data-base
+         '((rule (?x next-to ?y in (?v . ?z))
+                 (?x next-to ?y in ?z))
+           (rule (?x next-to ?y in (?x ?y . ?u)))))
+ '((?x next-to ?y in (1 (2 3) 4))
+   (?x next-to 1 in (2 1 3 1))))
