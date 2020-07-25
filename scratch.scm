@@ -1020,10 +1020,23 @@
 
 (set! debug #t)
 
-(do-queries
- microshaft-data-base
- '((wheel ?who)
-   (sum ?salary
-        (and (wheel ?who)
-             (make-distinct ?who)
-             (salary ?who ?salary)))))
+(define reverse-rule
+  '((rule (append-to-form () ?y ?y))
+    (rule (append-to-form (?u . ?v) ?y (?u . ?z))
+          (append-to-form ?v ?y ?z))
+    (rule (reverse () ()))
+    (rule (reverse (?a . ?b) ?c)
+          (and (append-to-form ?d (?a) ?c)
+               (reverse ?b ?d)))))
+
+(test
+ '((reverse (a b c) (c b a)))
+ (let ((db (make-database)))
+   (database-add db reverse-rule)
+   (database-query '(reverse (a ?x c) (?y b ?z)) db)))
+
+(test
+ '((reverse (1 2 3) (3 2 1)))
+ (let ((db (make-database)))
+   (database-add db reverse-rule)
+   (database-query '(reverse ?x (3 2 1)) db)))
