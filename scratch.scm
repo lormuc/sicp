@@ -1016,27 +1016,47 @@
                     (newline)))))
      queries)))
 
+(define append-to-form-rule
+  '((rule (append-to-form () ?y ?y))
+    (rule (append-to-form (?u . ?v) ?y (?u . ?z))
+          (append-to-form ?v ?y ?z))))
+
 (test-end)
 
 (set! debug #t)
 
-(define reverse-rule
-  '((rule (append-to-form () ?y ?y))
-    (rule (append-to-form (?u . ?v) ?y (?u . ?z))
-          (append-to-form ?v ?y ?z))
-    (rule (reverse () ()))
-    (rule (reverse (?a . ?b) ?c)
-          (and (append-to-form ?d (?a) ?c)
-               (reverse ?b ?d)))))
+(define genealogy
+  '((son adam cain) (son cain enoch)
+    (son enoch irad) (son irad mehujael)
+    (son mehujael methushael)
+    (son methushael lamech)
+    (wife lamech ada) (son ada jabal)
+    (son ada jubal)))
+
+(define son-rule
+  '((rule (grandson ?x ?y)
+          (and (son ?x ?z)
+               (son ?z ?y)))
+    (rule (son ?man ?son)
+          (and (wife ?man ?woman)
+               (son ?woman ?son)))))
+
+(define great-grandson-rule
+  '((rule ((grandson) ?x ?y) (grandson ?x ?y))
+    (rule ((great . ?rel) ?x ?y)
+          (and (son ?x ?z)
+               (?rel ?z ?y)
+               (append-to-form ?w (grandson) ?rel)))))
 
 (test
- '((reverse (a b c) (c b a)))
+ '((((great grandson) adam irad))
+   ()
+   (((great great grandson) adam mehujael)))
  (let ((db (make-database)))
-   (database-add db reverse-rule)
-   (database-query '(reverse (a ?x c) (?y b ?z)) db)))
-
-(test
- '((reverse (1 2 3) (3 2 1)))
- (let ((db (make-database)))
-   (database-add db reverse-rule)
-   (database-query '(reverse ?x (3 2 1)) db)))
+   (database-add db genealogy)
+   (database-add db son-rule)
+   (database-add db great-grandson-rule)
+   (database-add db append-to-form-rule)
+   (list (database-query '(?rel adam irad) db)
+         (database-query '((great grandson) adam cain) db)
+         (database-query '(?rel adam mehujael) db))))
