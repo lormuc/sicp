@@ -596,18 +596,32 @@
  '((? x) (((? w)) (? y)) z)
  (query-syntax-process '(?x ((?w) ?y) z)))
 
-(define (database-query-stream query db)
-  (let ((query (query-syntax-process query)))
-    (stream-map
-     (lambda (frame)
-       (instantiate query frame
-                    (lambda (var frame)
-                      (contract-question-mark var))))
-     (qeval query (singleton-stream '()) db))))
-
 (define (database-query query db)
-  (stream->list
-   (database-query-stream query db)))
+  (let ((query (query-syntax-process query)))
+    (cond ((tagged-list? query 'sum)
+           (frame-stream-accumulate
+            (lambda (values) (apply + values))
+            (cadr query)
+            (qeval (caddr query) (singleton-stream '()) db)))
+          ((tagged-list? query 'average)
+           (frame-stream-accumulate
+            (lambda (values) (/ (apply + values)
+                                (length values)))
+            (cadr query)
+            (qeval (caddr query) (singleton-stream '()) db)))
+          ((tagged-list? query 'maximum)
+           (frame-stream-accumulate
+            (lambda (values) (apply max values))
+            (cadr query)
+            (qeval (caddr query) (singleton-stream '()) db)))
+          (else
+           (stream->list
+            (stream-map
+             (lambda (frame)
+               (instantiate query frame
+                            (lambda (var frame)
+                              (contract-question-mark var))))
+             (qeval query (singleton-stream '()) db)))))))
 
 (define (qeval-and exps frame-stream database)
   (if (null? exps)
@@ -798,6 +812,116 @@
                                  (inc ?c ?b)))))
    (database-query '(inc-inc ?x ?y) db)))
 
+(define (frame-stream-accumulate func var frame-stream)
+  (func
+   (stream->list
+    (stream-map
+     (lambda (frame)
+       (instantiate
+        var frame
+        (lambda (v f)
+          (error
+           "unbound variable -- frame-stream-accumulate"
+           v))))
+     frame-stream))))
+
+(test
+ 4
+ (frame-stream-accumulate
+  (lambda (values) (apply max values))
+  '(? x) '((((? x) . 1)) (((? x) . 4)) (((? x) . 3)))))
+
+(test
+ 3
+ (frame-stream-accumulate
+  (lambda (values) (apply + values))
+  '(? y) '((((? y) . (? x)) ((? x) . 3)))))
+
+(define (get-var-value var frame)
+  (instantiate var frame
+               (lambda (v f) '*unbound*)))
+
+(define (equal-var-values? value-0 value-1)
+  (and (not (eq? value-0 '*unbound*))
+       (not (eq? value-1 '*unbound*))
+       (equal? value-0 value-1)))
+
+(define (frame-stream-remove frame-stream var value)
+  (stream-filter
+   (lambda (frame)
+     (not (equal-var-values? value
+                             (get-var-value var frame))))
+   frame-stream))
+
+(define (make-distinct exps frame-stream-0 database)
+  (let ((var (car exps)))
+    (define (run frame-stream)
+      (if (stream-null? frame-stream)
+          frame-stream
+          (let ((head-value
+                 (get-var-value var
+                                (stream-car frame-stream))))
+            (cons-stream
+             (stream-car frame-stream)
+             (frame-stream-remove
+              (run (stream-cdr frame-stream))
+              var head-value)))))
+    (run frame-stream-0)))
+
+(test
+ '((((? x) . 0)))
+ (stream->list
+  (make-distinct
+   '((? x))
+   '((((? x) . 0)) (((? x) . 0)))
+   (make-database))))
+(test
+ '((((? y) . 1))
+   (((? y) . 3) (? x) . 1)
+   (((? y) . 5))
+   (((? z) . 9)))
+ (stream->list
+  (make-distinct
+   '((? y))
+   '((((? y) . 1))
+     (((? y) . 3) (? x) . 1)
+     (((? z) . 5) ((? y) . 3))
+     (((? y) . 5))
+     (((? z) . 9))
+     (((? z) . 4) ((? y) . 1)))
+   (make-database))))
+
+(put 'make-distinct 'qeval make-distinct)
+(test
+ '((b 1))
+ (let ((db (make-database)))
+   (database-add db '((a 1) (a 1) (a 1)
+                      (rule (b ?x) (and (a ?x) (make-distinct ?x)))))
+   (database-query '(b ?x) db)))
+
+(test
+ 6
+ (let ((db (make-database)))
+   (database-add db '((a 1) (a 2) (a 3)))
+   (database-query '(sum ?x (a ?x)) db)))
+(test
+ 4
+ (let ((db (make-database)))
+   (database-add db '((a 1) (a 1) (a 1) (a 3)))
+   (database-query '(sum ?x (and (a ?x)
+                                 (make-distinct ?x)))
+                   db)))
+(test
+ 2
+ (let ((db (make-database)))
+   (database-add db '((a 1) (a 2) (a 3)))
+   (database-query '(average ?x (a ?x)) db)))
+(test
+ 3
+ (let ((db (make-database)))
+   (database-add db '((a 1) (a 2) (a 3)))
+   (database-query '(maximum ?x (a ?x)) db)))
+
 (define microshaft-data-base
   '((address (bitdiddle ben) (slumerville (ridge road) 10))
     (job (bitdiddle ben) (computer wizard))
@@ -882,15 +1006,24 @@
        (newline)
        (display ";;; query results:")
        (newline)
-       (for-each
-        (lambda (query-result)
-          (display query-result)
-          (newline))
-        (database-query query db)))
+       (let ((answer (database-query query db)))
+         (if (pair? answer)
+             (for-each (lambda (query-result)
+                         (display query-result)
+                         (newline))
+                       answer)
+             (begin (display answer)
+                    (newline)))))
      queries)))
-
-
 
 (test-end)
 
 (set! debug #t)
+
+(do-queries
+ microshaft-data-base
+ '((wheel ?who)
+   (sum ?salary
+        (and (wheel ?who)
+             (make-distinct ?who)
+             (salary ?who ?salary)))))
