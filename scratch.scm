@@ -8,11 +8,9 @@
 (define (contents exp)
   (cdr exp))
 
-(test-group
- "type contents"
- (test 'and (type '(and (a (? x)) (b (? x)))))
- (test '((a (? x)) (b (? x)))
-       (contents '(and (a (? x)) (b (? x))))))
+(test 'and (type '(and (a (? x)) (b (? x)))))
+(test '((a (? x)) (b (? x)))
+      (contents '(and (a (? x)) (b (? x)))))
 
 (define (rule? statement)
   (tagged-list? statement 'rule))
@@ -35,14 +33,8 @@
 (define (constant-symbol? exp)
   (symbol? exp))
 
-(test-group
- "constant-symbol?"
- (test
-  #f
-  (constant-symbol? '(? x)))
- (test
-  #t
-  (constant-symbol? 'a)))
+(test #f (constant-symbol? '(? x)))
+(test #t (constant-symbol? 'a))
 
 (define (contract-question-mark var)
   (string->symbol
@@ -54,10 +46,8 @@
                        "#"
                        (number->string (cadr var)))))))
 
-(test-group
- "contract-question-mark"
- (test '?var (contract-question-mark '(? var)))
- (test '?x#0 (contract-question-mark '(? 0 x))))
+(test '?var (contract-question-mark '(? var)))
+(test '?x#0 (contract-question-mark '(? 0 x)))
 
 (define (make-binding variable value)
   (cons variable value))
@@ -68,13 +58,11 @@
 (define (binding-value binding)
   (cdr binding))
 
-(test-group
- "binding"
- (test
-  '(x . 0)
-  (let ((binding (make-binding 'x 0)))
-    (cons (binding-variable binding)
-          (binding-value binding)))))
+(test
+ '(x . 0)
+ (let ((binding (make-binding 'x 0)))
+   (cons (binding-variable binding)
+         (binding-value binding))))
 
 (define (binding-in-frame variable frame)
   (if (null? frame)
@@ -84,25 +72,21 @@
           (car frame)
           (binding-in-frame variable (cdr frame)))))
 
-(test-group
- "binding-in-frame"
- (test
-  #f
-  (binding-in-frame '(? x) '()))
- (test
-  '((? y) . 3)
-  (binding-in-frame
-   '(? y)
-   '(((? x) . 0) ((? y) . 3) ((? z) . 5)))))
+(test
+ #f
+ (binding-in-frame '(? x) '()))
+(test
+ '((? y) . 3)
+ (binding-in-frame
+  '(? y)
+  '(((? x) . 0) ((? y) . 3) ((? z) . 5))))
 
 (define (extend variable value frame)
   (cons (make-binding variable value) frame))
 
-(test-group
- "extend"
- (test '(((? x) . 0)) (extend '(? x) 0 '()))
- (test '(((? y) . 1) ((? x) . 0))
-       (extend '(? y) 1 '(((? x) . 0)))))
+(test '(((? x) . 0)) (extend '(? x) 0 '()))
+(test '(((? y) . 1) ((? x) . 0))
+      (extend '(? y) 1 '(((? x) . 0))))
 
 (define (use-index? exp)
   (constant-symbol? (car exp)))
@@ -139,21 +123,19 @@
           (table-put table index 'assertion-stream
                      (cons-stream assertion prev))))))
 
-(test-group
- "store-assertion-in-index"
- (test
-  '(((a b c) (a d e)) ((b b c)))
-  (let ((table (make-table)))
-    (store-assertion-in-index '(a d e) table)
-    (store-assertion-in-index '(a b c) table)
-    (store-assertion-in-index '(b b c) table)
-    (store-assertion-in-index '((? x) b c) table)
-    (list
-     (stream->list
-      ((table 'lookup-proc) 'a 'assertion-stream))
-     (stream->list
-      ((table
-        'lookup-proc) 'b 'assertion-stream))))))
+(test
+ '(((a b c) (a d e)) ((b b c)))
+ (let ((table (make-table)))
+   (store-assertion-in-index '(a d e) table)
+   (store-assertion-in-index '(a b c) table)
+   (store-assertion-in-index '(b b c) table)
+   (store-assertion-in-index '((? x) b c) table)
+   (list
+    (stream->list
+     ((table 'lookup-proc) 'a 'assertion-stream))
+    (stream->list
+     ((table
+       'lookup-proc) 'b 'assertion-stream)))))
 
 (define (store-rule-in-index rule table)
   (if (indexable? (conclusion rule))
@@ -162,23 +144,21 @@
           (table-put table key 'rule-stream
                      (cons-stream rule old))))))
 
-(test-group
- "store-rule-in-index"
- (test
-  '((rule (f (? a)) ((? a) b c d))
-    (rule (f (? a)))
-    (rule (f (? x) (? y)) (x y z)))
-  (let ((table (make-table)))
-    (store-rule-in-index '(rule (f (? x) (? y)) (x y z)) table)
-    (store-rule-in-index '(rule (f (? a))) table)
-    (store-rule-in-index '(rule (f (? a)) ((? a) b c d)) table)
-    (store-rule-in-index '(rule (i (? a)) (x b c d)) table)
-    (stream->list (table-get table 'f 'rule-stream))))
- (test
-  '((rule ((? a)) (b c)))
-  (let ((table (make-table)))
-    (store-rule-in-index '(rule ((? a)) (b c)) table)
-    (stream->list (table-get table '? 'rule-stream)))))
+(test
+ '((rule (f (? a)) ((? a) b c d))
+   (rule (f (? a)))
+   (rule (f (? x) (? y)) (x y z)))
+ (let ((table (make-table)))
+   (store-rule-in-index '(rule (f (? x) (? y)) (x y z)) table)
+   (store-rule-in-index '(rule (f (? a))) table)
+   (store-rule-in-index '(rule (f (? a)) ((? a) b c d)) table)
+   (store-rule-in-index '(rule (i (? a)) (x b c d)) table)
+   (stream->list (table-get table 'f 'rule-stream))))
+(test
+ '((rule ((? a)) (b c)))
+ (let ((table (make-table)))
+   (store-rule-in-index '(rule ((? a)) (b c)) table)
+   (stream->list (table-get table '? 'rule-stream))))
 
 (define (make-rule-counter)
   (let ((counter 0))
@@ -187,14 +167,12 @@
              (set! counter (+ counter 1))
              (- counter 1))))))
 
-(test-group
- "make-rule-counter"
- (test
-  '(0 1)
-  (let ((rc (make-rule-counter)))
-    (let ((x (rc 'new-rule-application-id)))
-      (let ((y (rc 'new-rule-application-id)))
-        (list x y))))))
+(test
+ '(0 1)
+ (let ((rc (make-rule-counter)))
+   (let ((x (rc 'new-rule-application-id)))
+     (let ((y (rc 'new-rule-application-id)))
+       (list x y)))))
 
 (define (make-database)
   (let ((the-assertions the-empty-stream)
@@ -230,53 +208,51 @@
             (else (error "unknown request -- database" request))))
     dispatch))
 
-(test-group
- "database"
- (test
-  '(#t ((d e f g) (a b c)))
-  (let ((db (make-database)))
-    ((db 'add-assertion!) '(a b c))
-    ((db 'add-assertion!) '(d e f g))
-    (let ((a (db 'get-all-assertions)))
-      (list (promise? (cdr a)) (stream->list a)))))
- (test
-  '(#t ((d e f g) (a b c)) ((a b c)))
-  (let ((db (make-database)))
-    ((db 'add-assertion!) '(a b c))
-    ((db 'add-assertion!) '(d e f g))
-    (let ((a (db 'get-all-assertions)))
-      (list (promise? (cdr a)) (stream->list a)
-            (stream->list
-             (table-get (db 'get-index) 'a 'assertion-stream))))))
- (test
-  '(#t ((rule (r (? x) (? y))) (rule (s) (t u v)))
-       ((rule (r (? x) (? y)))))
-  (let ((db (make-database)))
-    ((db 'add-rule!) '(rule (s) (t u v)))
-    ((db 'add-rule!) '(rule (r (? x) (? y))))
-    (let ((a (db 'get-all-rules)))
-      (list (promise? (cdr a)) (stream->list a)
-            (stream->list
-             (table-get (db 'get-index) 'r 'rule-stream))))))
- (let ((rule-0 '(rule (s (? x) (? y)) (t u)))
-       (rule-1 '(rule (a (? z)) (b)))
-       (assert-0 '(a b c))
-       (assert-1 '(d e f)))
-   (test
-    (list assert-1 assert-0 rule-1 rule-0)
-    (let ((db (make-database)))
-      ((db 'add-rule-or-assertion!) rule-0)
-      ((db 'add-rule-or-assertion!) assert-0)
-      ((db 'add-rule-or-assertion!) rule-1)
-      ((db 'add-rule-or-assertion!) assert-1)
-      (append (stream->list (db 'get-all-assertions))
-              (stream->list (db 'get-all-rules))))))
- (test
-  '(0 1)
-  (let ((db (make-database)))
-    (let* ((id-0 (db 'new-rule-application-id))
-           (id-1 (db 'new-rule-application-id)))
-      (list id-0 id-1)))))
+(test
+ '(#t ((d e f g) (a b c)))
+ (let ((db (make-database)))
+   ((db 'add-assertion!) '(a b c))
+   ((db 'add-assertion!) '(d e f g))
+   (let ((a (db 'get-all-assertions)))
+     (list (promise? (cdr a)) (stream->list a)))))
+(test
+ '(#t ((d e f g) (a b c)) ((a b c)))
+ (let ((db (make-database)))
+   ((db 'add-assertion!) '(a b c))
+   ((db 'add-assertion!) '(d e f g))
+   (let ((a (db 'get-all-assertions)))
+     (list (promise? (cdr a)) (stream->list a)
+           (stream->list
+            (table-get (db 'get-index) 'a 'assertion-stream))))))
+(test
+ '(#t ((rule (r (? x) (? y))) (rule (s) (t u v)))
+      ((rule (r (? x) (? y)))))
+ (let ((db (make-database)))
+   ((db 'add-rule!) '(rule (s) (t u v)))
+   ((db 'add-rule!) '(rule (r (? x) (? y))))
+   (let ((a (db 'get-all-rules)))
+     (list (promise? (cdr a)) (stream->list a)
+           (stream->list
+            (table-get (db 'get-index) 'r 'rule-stream))))))
+(let ((rule-0 '(rule (s (? x) (? y)) (t u)))
+      (rule-1 '(rule (a (? z)) (b)))
+      (assert-0 '(a b c))
+      (assert-1 '(d e f)))
+  (test
+   (list assert-1 assert-0 rule-1 rule-0)
+   (let ((db (make-database)))
+     ((db 'add-rule-or-assertion!) rule-0)
+     ((db 'add-rule-or-assertion!) assert-0)
+     ((db 'add-rule-or-assertion!) rule-1)
+     ((db 'add-rule-or-assertion!) assert-1)
+     (append (stream->list (db 'get-all-assertions))
+             (stream->list (db 'get-all-rules))))))
+(test
+ '(0 1)
+ (let ((db (make-database)))
+   (let* ((id-0 (db 'new-rule-application-id))
+          (id-1 (db 'new-rule-application-id)))
+     (list id-0 id-1))))
 
 (define (get-indexed-rules pattern database)
   (stream-append
@@ -292,17 +268,15 @@
       (get-indexed-rules pattern database)
       (database 'get-all-rules)))
 
-(test-group
- "fetch-rules"
- (test
-  '((rule (h) i)
-    (rule ((? a) f (? b)) c) (rule ((? x) g (? y)) z))
-  (let ((db (make-database)))
-    ((db 'add-rule!) '(rule ((? x) g (? y)) z))
-    ((db 'add-rule!) '(rule (((a b)) c) d))
-    ((db 'add-rule!) '(rule ((? a) f (? b)) c))
-    ((db 'add-rule!) '(rule (h) i))
-    (stream->list (fetch-rules '(h) db)))))
+(test
+ '((rule (h) i)
+   (rule ((? a) f (? b)) c) (rule ((? x) g (? y)) z))
+ (let ((db (make-database)))
+   ((db 'add-rule!) '(rule ((? x) g (? y)) z))
+   ((db 'add-rule!) '(rule (((a b)) c) d))
+   ((db 'add-rule!) '(rule ((? a) f (? b)) c))
+   ((db 'add-rule!) '(rule (h) i))
+   (stream->list (fetch-rules '(h) db))))
 
 (define (fetch-assertions pattern database)
   (if (use-index? pattern)
@@ -311,19 +285,17 @@
                   'assertion-stream)
       (database 'get-all-assertions)))
 
-(test-group
- "fetch-assertions"
- (test
-  '(((a d e f) (a b c))
-    ((w x y z) ((d e) f) (a d e f) (a b c)))
-  (let ((db (make-database)))
-    ((db 'add-assertion!) '(a b c))
-    ((db 'add-assertion!) '(a d e f))
-    ((db 'add-assertion!) '((d e) f))
-    ((db 'add-assertion!) '(w x y z))
-    (list (stream->list (fetch-assertions '(a) db))
-          (stream->list
-           (fetch-assertions '((? x) y) db))))))
+(test
+ '(((a d e f) (a b c))
+   ((w x y z) ((d e) f) (a d e f) (a b c)))
+ (let ((db (make-database)))
+   ((db 'add-assertion!) '(a b c))
+   ((db 'add-assertion!) '(a d e f))
+   ((db 'add-assertion!) '((d e) f))
+   ((db 'add-assertion!) '(w x y z))
+   (list (stream->list (fetch-assertions '(a) db))
+         (stream->list
+          (fetch-assertions '((? x) y) db)))))
 
 (define (depends-on? exp-arg var frame)
   (define (tree-walk exp)
@@ -337,16 +309,14 @@
           (else false)))
   (tree-walk exp-arg))
 
-(test-group
- "depends-on?"
- (test true (depends-on? '((? x)) '(? x) '()))
- (test false (depends-on? '(? y) '(? x) '()))
- (test false (depends-on? '((? y) ((? z))) '(? x) '()))
- (test true
-       (depends-on? '(? y) '(? x) '(((? y) . (? x)))))
- (test true
-       (depends-on? '(a b c (? y)) '(? x)
-                    '(((? y) . (f g (h (? x))))))))
+(test true (depends-on? '((? x)) '(? x) '()))
+(test false (depends-on? '(? y) '(? x) '()))
+(test false (depends-on? '((? y) ((? z))) '(? x) '()))
+(test true
+      (depends-on? '(? y) '(? x) '(((? y) . (? x)))))
+(test true
+      (depends-on? '(a b c (? y)) '(? x)
+                   '(((? y) . (f g (h (? x)))))))
 
 (define (extend-if-possible var val frame)
   (let ((binding (binding-in-frame var frame)))
@@ -378,76 +348,72 @@
                                    frame)))
         (else 'failed)))
 
-(test-group
- "extend-if-possible"
- (test
-  '(((? x) . 0))
-  (extend-if-possible '(? x) 0 '()))
- (test
-  'failed
-  (extend-if-possible '(? y) 1 '(((? y) . 0))))
- (test
-  '(((? y) . b) ((? x) . (f (? y))))
-  (extend-if-possible '(? x) '(f b)
-                      '(((? x) . (f (? y))))))
- (test
-  'failed
-  (extend-if-possible '(? x) '(? y)
-                      '(((? y) . (z (? x))))))
- (test
-  '(((? x) . (? x)))
-  (extend-if-possible '(? x) '(? x) '()))
- (test
-  '(((? y) . (? x)))
-  (extend-if-possible '(? x) '(? y) '(((? y) . (? x)))))
- (test
-  'failed
-  (extend-if-possible '(? x) '(? y)
-                      '(((? y) . (a (? x)))))))
+(test
+ '(((? x) . 0))
+ (extend-if-possible '(? x) 0 '()))
+(test
+ 'failed
+ (extend-if-possible '(? y) 1 '(((? y) . 0))))
+(test
+ '(((? y) . b) ((? x) . (f (? y))))
+ (extend-if-possible '(? x) '(f b)
+                     '(((? x) . (f (? y))))))
+(test
+ 'failed
+ (extend-if-possible '(? x) '(? y)
+                     '(((? y) . (z (? x))))))
+(test
+ '(((? x) . (? x)))
+ (extend-if-possible '(? x) '(? x) '()))
+(test
+ '(((? y) . (? x)))
+ (extend-if-possible '(? x) '(? y) '(((? y) . (? x)))))
+(test
+ 'failed
+ (extend-if-possible '(? x) '(? y)
+                     '(((? y) . (a (? x))))))
 
-(test-group
- "unify-match"
- (test
-  '(((? x) . a))
-  (unify-match '((? x)) '(a) '()))
- (test
-  'failed
-  (unify-match '(? x) 0 'failed))
- (test
-  '(((? x) . (? y)))
-  (unify-match '(? x) '(? y) '()))
- (test
-  '(((? x) . a))
-  (unify-match '((? x) a) '(a (? x)) '()))
- (test
-  '(((? y) . a) ((? x) . a))
-  (unify-match '((? x) (? y)) '(a (? x)) '()))
- (test
-  '(((? x) . a))
-  (unify-match '(? x) 'a '(((? x) . a))))
- (test
-  '(((? y) . a) ((? x) . a))
-  (unify-match '(? x) '(? y) '(((? x) . a))))
- (test
-  'failed
-  (unify-match 'b '(? x) '(((? x) . a))))
- (test
-  'failed
-  (unify-match '((? x) (? x)) '((? y) (a (? y))) '()))
- (test
-  '(((? x) . (? y)))
-  (unify-match '((? x) (? x)) '((? y) (? y)) '()))
- (test
-  '(((? y) . a) ((? z) . a) ((? x) . (? y)))
-  (unify-match '((? x) a (? y)) '((? y) (? z) a) '()))
- (test
-  'failed
-  (unify-match '((? x) (? y) a) '((? x) b (? y)) '()))
- (test
-  '(((? z) . c) ((? y) . b) ((? x) a (? y) c))
-  (unify-match '((? x) (? x))
-               '((a (? y) c) (a b (? z)))
-               '())))
+(test
+ '(((? x) . a))
+ (unify-match '((? x)) '(a) '()))
+(test
+ 'failed
+ (unify-match '(? x) 0 'failed))
+(test
+ '(((? x) . (? y)))
+ (unify-match '(? x) '(? y) '()))
+(test
+ '(((? x) . a))
+ (unify-match '((? x) a) '(a (? x)) '()))
+(test
+ '(((? y) . a) ((? x) . a))
+ (unify-match '((? x) (? y)) '(a (? x)) '()))
+(test
+ '(((? x) . a))
+ (unify-match '(? x) 'a '(((? x) . a))))
+(test
+ '(((? y) . a) ((? x) . a))
+ (unify-match '(? x) '(? y) '(((? x) . a))))
+(test
+ 'failed
+ (unify-match 'b '(? x) '(((? x) . a))))
+(test
+ 'failed
+ (unify-match '((? x) (? x)) '((? y) (a (? y))) '()))
+(test
+ '(((? x) . (? y)))
+ (unify-match '((? x) (? x)) '((? y) (? y)) '()))
+(test
+ '(((? y) . a) ((? z) . a) ((? x) . (? y)))
+ (unify-match '((? x) a (? y)) '((? y) (? z) a) '()))
+(test
+ 'failed
+ (unify-match '((? x) (? y) a) '((? x) b (? y)) '()))
+(test
+ '(((? z) . c) ((? y) . b) ((? x) a (? y) c))
+ (unify-match '((? x) (? x))
+              '((a (? y) c) (a b (? z)))
+              '()))
 
 (define (make-new-variable var id)
   (cons '? (cons id (cdr var))))
@@ -481,25 +447,23 @@
                 (cdr exp) frame unbound-var-handler)))
         (else exp)))
 
-(test-group
- "instantiate"
- (test
-  '()
-  (instantiate '() '() '()))
- (test
-  '0
-  (instantiate '(? x) '(((? x) . 0)) '()))
- (test
-  '((3 a) (3 b) 3)
-  (instantiate
-   '(((? x) a) ((? y) b) (? x))
-   '(((? x) . (? y)) ((? y) . 3)) '()))
- (let ((frame (extend '(? y) 3 '())))
-   (test
-    (list '(? x) frame)
-    (instantiate '(? x) frame
-                 (lambda (var frame)
-                   (list var frame))))))
+(test
+ '()
+ (instantiate '() '() '()))
+(test
+ '0
+ (instantiate '(? x) '(((? x) . 0)) '()))
+(test
+ '((3 a) (3 b) 3)
+ (instantiate
+  '(((? x) a) ((? y) b) (? x))
+  '(((? x) . (? y)) ((? y) . 3)) '()))
+(let ((frame (extend '(? y) 3 '())))
+  (test
+   (list '(? x) frame)
+   (instantiate '(? x) frame
+                (lambda (var frame)
+                  (list var frame)))))
 
 (define (extend-if-consistent var dat frame)
   (let ((binding (binding-in-frame var frame)))
@@ -522,27 +486,23 @@
                                        frame)))
         (else 'failed)))
 
-(test-group
- "extend-if-consistent"
- (test
-  '(((? x) . 0))
-  (extend-if-consistent '(? x) 0 '()))
- (test
-  'failed
-  (extend-if-consistent '(? y) 1 '(((? y) . 0))))
- (test
-  '(((? y) . b) ((? x) . (f (? y))))
-  (extend-if-consistent '(? x) '(f b)
-                        '(((? x) . (f (? y)))))))
+(test
+ '(((? x) . 0))
+ (extend-if-consistent '(? x) 0 '()))
+(test
+ 'failed
+ (extend-if-consistent '(? y) 1 '(((? y) . 0))))
+(test
+ '(((? y) . b) ((? x) . (f (? y))))
+ (extend-if-consistent '(? x) '(f b)
+                       '(((? x) . (f (? y))))))
 
-(test-group
- "pattern-match"
- (test
-  '(((? x) . a))
-  (pattern-match '((? x)) '(a) '()))
- (test
-  'failed
-  (pattern-match '(?x) 0 'failed)))
+(test
+ '(((? x) . a))
+ (pattern-match '((? x)) '(a) '()))
+(test
+ 'failed
+ (pattern-match '(?x) 0 'failed))
 
 (define (find-assertions pattern frame database)
   (stream-filter
@@ -553,16 +513,14 @@
       (pattern-match pattern assertion frame))
     (fetch-assertions pattern database))))
 
-(test-group
- "find-assertions"
- (test
-  '((((? y) . 2) ((? x) . 0)) (((? y) . 4) ((? x) . 2)))
-  (let ((db (make-database)))
-    ((db 'add-assertion!) '(+ 0 1 1))
-    ((db 'add-assertion!) '(+ 2 2 4))
-    ((db 'add-assertion!) '(+ 2 0 2))
-    (stream->list
-     (find-assertions '(+ 2 (? x) (? y)) '() db)))))
+(test
+ '((((? y) . 2) ((? x) . 0)) (((? y) . 4) ((? x) . 2)))
+ (let ((db (make-database)))
+   ((db 'add-assertion!) '(+ 0 1 1))
+   ((db 'add-assertion!) '(+ 2 2 4))
+   ((db 'add-assertion!) '(+ 2 0 2))
+   (stream->list
+    (find-assertions '(+ 2 (? x) (? y)) '() db))))
 
 (define (simple-query query-pattern frame-stream database)
   (stream-flatmap
@@ -597,30 +555,28 @@
                  (singleton-stream unify-result)
                  db)))))
 
-(test-group
- "simple-query"
- (test
-  '()
-  (stream->list
-   (simple-query '(a b c) '(()) (make-database))))
- (test
-  '((((? x) . 2)))
-  (let ((db (make-database)))
-    ((db 'add-assertion!) '(inc 0 1))
-    ((db 'add-assertion!) '(inc 1 2))
-    ((db 'add-assertion!) '(inc 2 3))
-    (stream->list
-     (simple-query '(inc 1 (? x)) '(()) db))))
- (test
-  '(((((? 0 z) . p) ((? 0 y) . q))) ())
-  (let ((db (make-database)))
-    ((db 'add-assertion!) '(inc 0 1))
-    ((db 'add-rule!) '(rule (r (? y) (? z)) (a (? y))))
-    ((db 'add-assertion!) '(a q))
-    (list (stream->list
-           (simple-query '(r q p) '(()) db))
-          (stream->list
-           (simple-query '(r s s) '(()) db))))))
+(test
+ '()
+ (stream->list
+  (simple-query '(a b c) '(()) (make-database))))
+(test
+ '((((? x) . 2)))
+ (let ((db (make-database)))
+   ((db 'add-assertion!) '(inc 0 1))
+   ((db 'add-assertion!) '(inc 1 2))
+   ((db 'add-assertion!) '(inc 2 3))
+   (stream->list
+    (simple-query '(inc 1 (? x)) '(()) db))))
+(test
+ '(((((? 0 z) . p) ((? 0 y) . q))) ())
+ (let ((db (make-database)))
+   ((db 'add-assertion!) '(inc 0 1))
+   ((db 'add-rule!) '(rule (r (? y) (? z)) (a (? y))))
+   ((db 'add-assertion!) '(a q))
+   (list (stream->list
+          (simple-query '(r q p) '(()) db))
+         (stream->list
+          (simple-query '(r s s) '(()) db)))))
 
 (define (query-syntax-process exp)
   (cond ((and (symbol? exp)
@@ -662,48 +618,46 @@
 
 (put 'and 'qeval qeval-and)
 
-(test-group
- "and"
- (test
-  '((and (even 2) (prime 2)))
-  (let ((db (make-database)))
-    ((db 'add-assertion!) '(prime 2))
-    ((db 'add-assertion!) '(prime 3))
-    ((db 'add-assertion!) '(prime 5))
-    ((db 'add-assertion!) '(even 2))
-    (database-query '(and (even ?x) (prime ?x)) db)))
- (test
-  '((/6 6) (/6 0))
-  (let ((db (make-database)))
-    ((db 'add-assertion!) '(/3 0))
-    ((db 'add-assertion!) '(/3 3))
-    ((db 'add-assertion!) '(/3 6))
-    ((db 'add-assertion!) '(/2 0))
-    ((db 'add-assertion!) '(/2 2))
-    ((db 'add-assertion!) '(/2 4))
-    ((db 'add-assertion!) '(/2 6))
-    ((db 'add-rule!)
-     '(rule (/6 (? x))
-            (and (/3 (? x))
-                 (and (/2 (? x)) (/2 (? x)))
-                 (/3 0))))
-    (database-query '(/6 ?x) db)))
- (test
-  '((/6 6) (/6 0))
-  (let ((db (make-database)))
-    ((db 'add-assertion!) '(/3 0))
-    ((db 'add-assertion!) '(/3 3))
-    ((db 'add-assertion!) '(/3 6))
-    ((db 'add-assertion!) '(/2 0))
-    ((db 'add-assertion!) '(/2 2))
-    ((db 'add-assertion!) '(/2 4))
-    ((db 'add-assertion!) '(/2 6))
-    ((db 'add-rule!)
-     '(rule (/6 (? x))
-            (and (/3 (? x))
-                 (and (/2 (? x)) (/2 (? x)))
-                 (/3 0))))
-    (database-query '(/6 ?x) db))))
+(test
+ '((and (even 2) (prime 2)))
+ (let ((db (make-database)))
+   ((db 'add-assertion!) '(prime 2))
+   ((db 'add-assertion!) '(prime 3))
+   ((db 'add-assertion!) '(prime 5))
+   ((db 'add-assertion!) '(even 2))
+   (database-query '(and (even ?x) (prime ?x)) db)))
+(test
+ '((/6 6) (/6 0))
+ (let ((db (make-database)))
+   ((db 'add-assertion!) '(/3 0))
+   ((db 'add-assertion!) '(/3 3))
+   ((db 'add-assertion!) '(/3 6))
+   ((db 'add-assertion!) '(/2 0))
+   ((db 'add-assertion!) '(/2 2))
+   ((db 'add-assertion!) '(/2 4))
+   ((db 'add-assertion!) '(/2 6))
+   ((db 'add-rule!)
+    '(rule (/6 (? x))
+           (and (/3 (? x))
+                (and (/2 (? x)) (/2 (? x)))
+                (/3 0))))
+   (database-query '(/6 ?x) db)))
+(test
+ '((/6 6) (/6 0))
+ (let ((db (make-database)))
+   ((db 'add-assertion!) '(/3 0))
+   ((db 'add-assertion!) '(/3 3))
+   ((db 'add-assertion!) '(/3 6))
+   ((db 'add-assertion!) '(/2 0))
+   ((db 'add-assertion!) '(/2 2))
+   ((db 'add-assertion!) '(/2 4))
+   ((db 'add-assertion!) '(/2 6))
+   ((db 'add-rule!)
+    '(rule (/6 (? x))
+           (and (/3 (? x))
+                (and (/2 (? x)) (/2 (? x)))
+                (/3 0))))
+   (database-query '(/6 ?x) db)))
 
 (define (disjoin disjuncts frame-stream database)
   (stream-flatmap
@@ -719,29 +673,27 @@
  '((always-true))
  (database-query '(always-true) (make-database)))
 
-(test-group
- "disjoin"
- (test
-  '(())
-  (let ((db (make-database)))
-    ((db 'add-assertion!) '(even 0))
-    (stream->list (disjoin '((even 0)) '(()) db))))
- (test
-  '()
-  (let ((db (make-database)))
-    ((db 'add-assertion!) '(even 0))
-    (stream->list (disjoin '((even 1)) '(()) db))))
- (test
-  '((((? x) . 2)) (((? y) . 3))
-    (((? x) . 0)) (((? y) . 1)))
-  (let ((db (make-database)))
-    ((db 'add-assertion!) '(even 0))
-    ((db 'add-assertion!) '(odd 1))
-    ((db 'add-assertion!) '(even 2))
-    ((db 'add-assertion!) '(odd 3))
-    (stream->list
-     (disjoin '((even (? x)) (odd (? y)))
-              '(()) db)))))
+(test
+ '(())
+ (let ((db (make-database)))
+   ((db 'add-assertion!) '(even 0))
+   (stream->list (disjoin '((even 0)) '(()) db))))
+(test
+ '()
+ (let ((db (make-database)))
+   ((db 'add-assertion!) '(even 0))
+   (stream->list (disjoin '((even 1)) '(()) db))))
+(test
+ '((((? x) . 2)) (((? y) . 3))
+   (((? x) . 0)) (((? y) . 1)))
+ (let ((db (make-database)))
+   ((db 'add-assertion!) '(even 0))
+   ((db 'add-assertion!) '(odd 1))
+   ((db 'add-assertion!) '(even 2))
+   ((db 'add-assertion!) '(odd 3))
+   (stream->list
+    (disjoin '((even (? x)) (odd (? y)))
+             '(()) db))))
 
 (put 'or 'qeval disjoin)
 
@@ -846,8 +798,6 @@
                                  (inc ?c ?b)))))
    (database-query '(inc-inc ?x ?y) db)))
 
-(test-end)
-
 (define microshaft-data-base
   '((address (bitdiddle ben) (slumerville (ridge road) 10))
     (job (bitdiddle ben) (computer wizard))
@@ -919,8 +869,6 @@
               (and (supervisor ?staff-person ?middle-manager)
                    (outranked-by ?middle-manager ?boss))))))
 
-(set! debug #t)
-
 (define (do-queries statements queries)
   (let ((db (make-database)))
     (database-add db statements)
@@ -941,133 +889,8 @@
         (database-query query db)))
      queries)))
 
-(do-queries
- (cons
-  '(rule
-    (big-shot ?person ?division)
-    (and (job ?person (?division . ?t0))
-         (or (not (supervisor ?person ?supervisor))
-             (and (supervisor ?person ?supervisor)
-                  (not (job ?supervisor
-                            (?division . ?t1)))))))
-  microshaft-data-base)
- '((big-shot ?x ?y)))
 
-(define rule-meeting-time
-  '(rule (meeting-time ?person ?day-and-time)
-         (and (job ?person (?division . ?...))
-              (or (meeting ?division ?day-and-time)
-                  (meeting whole-company ?day-and-time)))))
 
-(test
- '(((meeting-time (reasoner louis) (monday 10-am)))
-   ()
-   ((meeting-time (reasoner louis) (wednesday 4-pm))))
- (let ((db (make-database)))
-   (database-add
-    db
-    '((meeting computer (monday 10-am))
-      (meeting computer (wednesday 3-pm))
-      (meeting administration (friday 1-pm))
-      (meeting whole-company (wednesday 4-pm))
-      (job (reasoner louis) (computer programmer trainee))))
-   (database-add db (list rule-meeting-time))
-   (list
-    (database-query
-     '(meeting-time (reasoner louis) (monday ?t)) db)
-    (database-query
-     '(meeting-time (reasoner louis) (friday 1-pm)) db)
-    (database-query
-     '(meeting-time (reasoner louis) (wednesday 4-pm)) db))))
+(test-end)
 
-(do-queries
- (append microshaft-data-base
-         '((meeting accounting (monday 9-am))
-           (meeting administration (monday 10-am))
-           (meeting computer (wednesday 3-pm))
-           (meeting administration (friday 1-pm))
-           (meeting whole-company (wednesday 4-pm)))
-         (list rule-meeting-time))
- '((meeting ?x (friday ?y))
-   (meeting-time (hacker alyssa p) (wednesday ?t))))
-
-(do-queries
- (append microshaft-data-base
-         '((id (bitdiddle ben) 0)
-           (id (hacker alyssa p) 1)
-           (id (fect cy d) 2)
-           (id (tweakit lem e) 3)
-           (id (reasoner louis) 4)
-           (id (warbucks oliver) 5)
-           (id (scrooge eben) 6)
-           (id (cratchet robert 7))
-           (id (aull dewitt) 8)
-           (rule (my-lives-near ?x ?y)
-                 (and (lives-near ?x ?y)
-                      (id ?x ?x-id)
-                      (id ?y ?y-id)
-                      (lisp-value < ?x-id ?y-id)))))
- '((my-lives-near ?x ?y)))
-
-(do-queries
- (append microshaft-data-base
-         '((rule (?x next-to ?y in (?v . ?z))
-                 (?x next-to ?y in ?z))
-           (rule (?x next-to ?y in (?x ?y . ?u)))))
- '((?x next-to ?y in (1 (2 3) 4))
-   (?x next-to 1 in (2 1 3 1))))
-
-(define rule-last-pair
-  '((rule (last-pair (?x) (?x)))
-    (rule (last-pair (?x . ?y) ?z)
-          (last-pair ?y ?z))))
-
-(test
- '(((last-pair (3) (3)))
-   ((last-pair (1 2 3) (3)))
-   ((last-pair (2 3) (3))))
- (let ((db (make-database)))
-   (database-add db rule-last-pair)
-   (list
-    (database-query '(last-pair (3) ?x) db)
-    (database-query '(last-pair (1 2 3) ?x) db)
-    (database-query '(last-pair (2 ?x) (3)) db))))
-
-(define genealogy
-  '((son adam cain) (son cain enoch)
-    (son enoch irad) (son irad mehujael)
-    (son mehujael methushael)
-    (son methushael lamech)
-    (wife lamech ada) (son ada jabal)
-    (son ada jubal)))
-
-(define son-rules
-  '((rule (grandson ?x ?y)
-          (and (son ?x ?z)
-               (son ?z ?y)))
-    (rule (son ?man ?son)
-          (and (wife ?man ?woman)
-               (son ?woman ?son)))))
-
-(test
- '(((grandson adam enoch))
-   ()
-   ((son lamech jabal))
-   ())
- (let ((db (make-database)))
-   (database-add db son-rules)
-   (database-add db genealogy)
-   (list
-    (database-query '(grandson adam enoch) db)
-    (database-query '(grandson adam cain) db)
-    (database-query '(son lamech jabal) db)
-    (database-query '(son lamech cain) db)
-    (database-query '(grandson cain ?x) db)
-    (database-query '(son lamech ?x) db)
-    (database-query '(grandson methushael ?x) db))))
-
-(do-queries
- (append genealogy son-rules)
- '((grandson cain ?x)
-   (son lamech ?x)
-   (grandson methushael ?x)))
+(set! debug #t)
