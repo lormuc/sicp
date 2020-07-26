@@ -89,6 +89,12 @@
        (stream-car s1)
        (stream-append-delayed (stream-cdr s1) delayed-s2))))
 
+(define (interleave s1 s2)
+  (if (stream-null? s1)
+      s2
+      (cons-stream (stream-car s1)
+                   (interleave s2 (stream-cdr s1)))))
+
 (define (interleave-delayed s1 delayed-s2)
   (if (stream-null? s1)
       (force delayed-s2)
@@ -109,3 +115,19 @@
 
 (define (singleton-stream x)
   (cons-stream x the-empty-stream))
+
+(define (stream-get-items k stream)
+  (cond ((stream-null? stream) '())
+        ((= k 0) '())
+        (else
+         (cons (stream-car stream)
+               (stream-get-items
+                (- k 1) (stream-cdr stream))))))
+
+(define (display-list items)
+  (for-each
+   (lambda (item)
+     (display item)
+     (newline))
+   items)
+  'ok)

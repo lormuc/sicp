@@ -899,49 +899,19 @@
                     (newline)))))
      queries)))
 
-(define append-to-form-rule
-  '((rule (append-to-form () ?y ?y))
-    (rule (append-to-form (?u . ?v) ?y (?u . ?z))
-          (append-to-form ?v ?y ?z))))
-
 (test-end)
 
 (set! log? #t)
 
-(define genealogy
-  '((son adam cain) (son cain enoch)
-    (son enoch irad) (son irad mehujael)
-    (son mehujael methushael)
-    (son methushael lamech)
-    (wife lamech ada) (son ada jabal)
-    (son ada jubal)))
-
-(define son-rule
-  '((rule (grandson ?x ?y)
-          (and (son ?x ?z)
-               (son ?z ?y)))
-    (rule (son ?man ?son)
-          (and (wife ?man ?woman)
-               (son ?woman ?son)))))
-
-(define great-grandson-rule
-  '((rule ((grandson) ?x ?y) (grandson ?x ?y))
-    (rule ((great . ?rel) ?x ?y)
-          (and (son ?x ?z)
-               (?rel ?z ?y)
-               (append-to-form ?w (grandson) ?rel)))))
-
-(test
- '((((great grandson) adam irad))
-   ()
-   (((great great grandson) adam mehujael)))
- (let ((db (make-database)))
-   (database-add db genealogy)
-   (database-add db son-rule)
-   (database-add db great-grandson-rule)
-   (database-add db append-to-form-rule)
-   (list (stream->list
-          (database-query '(?rel adam irad) db))
-         (stream->list
-          (database-query '((great grandson) adam cain) db))
-         (stream->list (database-query '(?rel adam mehujael) db)))))
+(let ((db (make-database)))
+  (database-add
+   db
+   '((a () ())
+     (rule (a (?x) ?y) (a ?x ?y))
+     (rule (a () (?y)) (a () ?y))))
+  ;; in this example, if stream-flatmap appended streams, the returned
+  ;; stream would not iterate through all possible answers, but only
+  ;; those in which ?x is ().  interleaving ensures that any answer
+  ;; can be eventually obtained.
+  (display-list
+   (stream-get-items 10 (database-query '(a ?x ?y) db))))
