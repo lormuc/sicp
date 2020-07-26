@@ -70,6 +70,14 @@
       (cons (stream-car stream)
             (stream->list (stream-cdr stream)))))
 
+(define (stream-filter pred stream)
+  (cond ((stream-null? stream) the-empty-stream)
+        ((pred (stream-car stream))
+         (cons-stream (stream-car stream)
+                      (stream-filter pred
+                                     (stream-cdr stream))))
+        (else (stream-filter pred (stream-cdr stream)))))
+
 (define (stream-append s1 s2)
   (if (stream-null? s1)
       s2
@@ -116,6 +124,12 @@
 (define (singleton-stream x)
   (cons-stream x the-empty-stream))
 
+(define (list->stream given-list)
+  (if (null? given-list)
+      the-empty-stream
+      (cons-stream (car given-list)
+                   (list->stream (cdr given-list)))))
+
 (define (stream-get-items k stream)
   (cond ((stream-null? stream) '())
         ((= k 0) '())
@@ -125,9 +139,8 @@
                 (- k 1) (stream-cdr stream))))))
 
 (define (display-list items)
-  (for-each
-   (lambda (item)
-     (display item)
-     (newline))
-   items)
+  (for-each (lambda (item)
+              (display item)
+              (newline))
+            items)
   'ok)

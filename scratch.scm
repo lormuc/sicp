@@ -503,8 +503,22 @@
         the-empty-stream
         (singleton-stream match-result))))
 
+(define (simple-stream-flatmap proc stream)
+  (simple-flatten (stream-map proc stream)))
+
+(define (simple-flatten stream)
+  (stream-map
+   (lambda (x) (stream-car x))
+   (stream-filter (lambda (x) (not (stream-null? x)))
+                  stream)))
+
+(test
+ '(1 2)
+ (stream->list
+  (simple-flatten (list->stream '(() (1) () (2))))))
+
 (define (find-assertions pattern frame database)
-  (stream-flatmap
+  (simple-stream-flatmap
    (lambda (datum)
      (check-an-assertion datum pattern frame))
    (fetch-assertions pattern database)))
@@ -902,16 +916,3 @@
 (test-end)
 
 (set! log? #t)
-
-(let ((db (make-database)))
-  (database-add
-   db
-   '((a () ())
-     (rule (a (?x) ?y) (a ?x ?y))
-     (rule (a () (?y)) (a () ?y))))
-  ;; in this example, if stream-flatmap appended streams, the returned
-  ;; stream would not iterate through all possible answers, but only
-  ;; those in which ?x is ().  interleaving ensures that any answer
-  ;; can be eventually obtained.
-  (display-list
-   (stream-get-items 10 (database-query '(a ?x ?y) db))))
