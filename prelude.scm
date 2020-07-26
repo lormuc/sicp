@@ -3,11 +3,16 @@
 (define true #t)
 (define false #f)
 
-(define debug #f)
+(define log? #f)
 (define (log-line . args)
-  (if debug
+  (if log?
       (begin (display args)
              (newline))))
+
+(define (tagged-list? exp tag)
+  (if (pair? exp)
+      (eq? (car exp) tag)
+      false))
 
 (define (make-table)
   (let ((local-table (list '*table*)))
@@ -39,10 +44,15 @@
             (else (error "unknown operation -- table" m))))
     dispatch))
 
+(define (table-put table key-1 key-2 value)
+  ((table 'insert-proc!) key-1 key-2 value))
+
+(define (table-get table key-1 key-2)
+  ((table 'lookup-proc) key-1 key-2))
+
 (define operation-table (make-table))
 (define get (operation-table 'lookup-proc))
 (define put (operation-table 'insert-proc!))
-
 
 (define-syntax cons-stream
   (syntax-rules ()
@@ -53,14 +63,6 @@
 
 (define stream-null? null?)
 (define the-empty-stream '())
-
-(define (stream-filter pred stream)
-  (cond ((stream-null? stream) the-empty-stream)
-        ((pred (stream-car stream))
-         (cons-stream (stream-car stream)
-                      (stream-filter pred
-                                     (stream-cdr stream))))
-        (else (stream-filter pred (stream-cdr stream)))))
 
 (define (stream->list stream)
   (if (stream-null? stream)
@@ -107,8 +109,3 @@
 
 (define (singleton-stream x)
   (cons-stream x the-empty-stream))
-
-(define (tagged-list? exp tag)
-  (if (pair? exp)
-      (eq? (car exp) tag)
-      false))

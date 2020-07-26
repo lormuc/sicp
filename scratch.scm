@@ -3,10 +3,14 @@
 (test-begin)
 
 (define (type exp)
-  (car exp))
+  (if (pair? exp)
+      (car exp)
+      (error "unknown expression type" exp)))
 
 (define (contents exp)
-  (cdr exp))
+  (if (pair? exp)
+      (cdr exp)
+      (error "unknown expression contents" exp)))
 
 (test 'and (type '(and (a (? x)) (b (? x)))))
 (test '((a (? x)) (b (? x)))
@@ -40,14 +44,14 @@
   (string->symbol
    (string-append
     "?"
-    (if (symbol? (cadr var))
-        (symbol->string (cadr var))
+    (if (number? (cadr var))
         (string-append (symbol->string (caddr var))
-                       "#"
-                       (number->string (cadr var)))))))
+                       "-"
+                       (number->string (cadr var)))
+        (symbol->string (cadr var))))))
 
 (test '?var (contract-question-mark '(? var)))
-(test '?x#0 (contract-question-mark '(? 0 x)))
+(test '?x-0 (contract-question-mark '(? 0 x)))
 
 (define (make-binding variable value)
   (cons variable value))
@@ -65,12 +69,7 @@
          (binding-value binding))))
 
 (define (binding-in-frame variable frame)
-  (if (null? frame)
-      #f
-      (if (equal? variable
-                  (binding-variable (car frame)))
-          (car frame)
-          (binding-in-frame variable (cdr frame)))))
+  (assoc variable frame))
 
 (test
  #f
@@ -106,12 +105,6 @@
 (test #t (indexable? '((? x) y z)))
 (test #t (indexable? '(a b c)))
 (test #f (indexable? '((u v) w)))
-
-(define (table-put table key-1 key-2 value)
-  ((table 'insert-proc!) key-1 key-2 value))
-
-(define (table-get table key-1 key-2)
-  ((table 'lookup-proc) key-1 key-2))
 
 (define (get-stream table key-1 key-2)
   (or (table-get table key-1 key-2) the-empty-stream))
@@ -161,12 +154,14 @@
    (stream->list (table-get table '? 'rule-stream))))
 
 (define (make-rule-counter)
-  (let ((counter 0))
+  (let ((counter -1))
     (lambda (request)
       (cond ((eq? request 'new-rule-application-id)
              (set! counter (+ counter 1))
-             (- counter 1))))))
+             counter)
+            (else (error "unknown request -- rule-counter" request))))))
 
+(test-error ((make-rule-counter) 'unknown-request))
 (test
  '(0 1)
  (let ((rc (make-rule-counter)))
@@ -182,8 +177,8 @@
     (define (dispatch request)
       (cond ((eq? request 'add-assertion!)
              (lambda (assertion)
+               (store-assertion-in-index assertion index)
                (let ((old the-assertions))
-                 (store-assertion-in-index assertion index)
                  (set! the-assertions
                        (cons-stream assertion old))
                  'ok)))
@@ -191,8 +186,8 @@
              the-assertions)
             ((eq? request 'add-rule!)
              (lambda (rule)
+               (store-rule-in-index rule index)
                (let ((old the-rules))
-                 (store-rule-in-index rule index)
                  (set! the-rules (cons-stream rule old))
                  'ok)))
             ((eq? request 'get-all-rules)
@@ -205,7 +200,8 @@
                    ((dispatch 'add-assertion!) x))))
             ((eq? request 'new-rule-application-id)
              (rule-counter 'new-rule-application-id))
-            (else (error "unknown request -- database" request))))
+            (else (error "unknown request -- database"
+                         request))))
     dispatch))
 
 (test
@@ -433,19 +429,17 @@
   0))
 
 (define (instantiate exp frame unbound-var-handler)
-  (cond ((null? exp) '())
-        ((var? exp)
-         (let ((t (binding-in-frame exp frame)))
-           (if t
-               (instantiate
-                (cdr t) frame unbound-var-handler)
-               (unbound-var-handler exp frame))))
-        ((pair? exp)
-         (cons (instantiate
-                (car exp) frame unbound-var-handler)
-               (instantiate
-                (cdr exp) frame unbound-var-handler)))
-        (else exp)))
+  (define (copy exp)
+    (cond ((var? exp)
+           (let ((binding (binding-in-frame exp frame)))
+             (if binding
+                 (copy (binding-value binding))
+                 (unbound-var-handler exp frame))))
+          ((pair? exp)
+           (cons (copy (car exp))
+                 (copy (cdr exp))))
+          (else exp)))
+  (copy exp))
 
 (test
  '()
@@ -468,9 +462,7 @@
 (define (extend-if-consistent var dat frame)
   (let ((binding (binding-in-frame var frame)))
     (if binding
-        (pattern-match (binding-value binding)
-                       dat
-                       frame)
+        (pattern-match (binding-value binding) dat frame)
         (extend var dat frame))))
 
 (define (pattern-match pattern data frame)
@@ -504,14 +496,18 @@
  'failed
  (pattern-match '(?x) 0 'failed))
 
+(define (check-an-assertion assertion query-pat query-frame)
+  (let ((match-result
+         (pattern-match query-pat assertion query-frame)))
+    (if (eq? match-result 'failed)
+        the-empty-stream
+        (singleton-stream match-result))))
+
 (define (find-assertions pattern frame database)
-  (stream-filter
-   (lambda (x)
-     (not (eq? x 'failed)))
-   (stream-map
-    (lambda (assertion)
-      (pattern-match pattern assertion frame))
-    (fetch-assertions pattern database))))
+  (stream-flatmap
+   (lambda (datum)
+     (check-an-assertion datum pattern frame))
+   (fetch-assertions pattern database)))
 
 (test
  '((((? y) . 2) ((? x) . 0)) (((? y) . 4) ((? x) . 2)))
@@ -537,10 +533,10 @@
         (simple-query query frame-stream database))))
 
 (define (apply-rules pattern frame database)
-  (stream-flatmap (lambda (rule)
-                    (apply-a-rule
-                     rule pattern frame database))
-                  (fetch-rules pattern database)))
+  (stream-flatmap
+   (lambda (rule)
+     (apply-a-rule rule pattern frame database))
+   (fetch-rules pattern database)))
 
 (define (apply-a-rule rule query-pattern query-frame db)
   (let ((clean-rule (rename-variables
@@ -578,19 +574,21 @@
          (stream->list
           (simple-query '(r s s) '(()) db)))))
 
-(define (query-syntax-process exp)
-  (cond ((and (symbol? exp)
-              (equal? (string-ref (symbol->string exp) 0)
-                      #\?))
-         (list '?
-               (string->symbol
-                (apply string
-                       (cdr
-                        (string->list (symbol->string exp)))))))
-        ((pair? exp)
-         (cons (query-syntax-process (car exp))
-               (query-syntax-process (cdr exp))))
+(define (map-over-symbols proc exp)
+  (cond ((symbol? exp) (proc exp))
+        ((pair? exp) (cons (map-over-symbols proc (car exp))
+                           (map-over-symbols proc (cdr exp))))
         (else exp)))
+
+(define (expand-question-mark symbol)
+  (let ((chars (symbol->string symbol)))
+    (if (string=? (substring chars 0 1) "?")
+        (list '? (string->symbol
+                  (substring chars 1 (string-length chars))))
+        symbol)))
+
+(define (query-syntax-process exp)
+  (map-over-symbols expand-question-mark exp))
 
 (test
  '((? x) (((? w)) (? y)) z)
@@ -598,39 +596,21 @@
 
 (define (database-query query db)
   (let ((query (query-syntax-process query)))
-    (cond ((tagged-list? query 'sum)
-           (frame-stream-accumulate
-            (lambda (values) (apply + values))
-            (cadr query)
-            (qeval (caddr query) (singleton-stream '()) db)))
-          ((tagged-list? query 'average)
-           (frame-stream-accumulate
-            (lambda (values) (/ (apply + values)
-                                (length values)))
-            (cadr query)
-            (qeval (caddr query) (singleton-stream '()) db)))
-          ((tagged-list? query 'maximum)
-           (frame-stream-accumulate
-            (lambda (values) (apply max values))
-            (cadr query)
-            (qeval (caddr query) (singleton-stream '()) db)))
-          (else
-           (stream->list
-            (stream-map
-             (lambda (frame)
-               (instantiate query frame
-                            (lambda (var frame)
-                              (contract-question-mark var))))
-             (qeval query (singleton-stream '()) db)))))))
+    (stream-map
+     (lambda (frame)
+       (instantiate query frame
+                    (lambda (var frame)
+                      (contract-question-mark var))))
+     (qeval query (singleton-stream '()) db))))
 
-(define (qeval-and exps frame-stream database)
+(define (conjoin exps frame-stream database)
   (if (null? exps)
       frame-stream
-      (qeval-and (cdr exps)
-                 (qeval (car exps) frame-stream database)
-                 database)))
+      (conjoin (cdr exps)
+               (qeval (car exps) frame-stream database)
+               database)))
 
-(put 'and 'qeval qeval-and)
+(put 'and 'qeval conjoin)
 
 (test
  '((and (even 2) (prime 2)))
@@ -639,7 +619,8 @@
    ((db 'add-assertion!) '(prime 3))
    ((db 'add-assertion!) '(prime 5))
    ((db 'add-assertion!) '(even 2))
-   (database-query '(and (even ?x) (prime ?x)) db)))
+   (stream->list
+    (database-query '(and (even ?x) (prime ?x)) db))))
 (test
  '((/6 6) (/6 0))
  (let ((db (make-database)))
@@ -655,7 +636,7 @@
            (and (/3 (? x))
                 (and (/2 (? x)) (/2 (? x)))
                 (/3 0))))
-   (database-query '(/6 ?x) db)))
+   (stream->list (database-query '(/6 ?x) db))))
 (test
  '((/6 6) (/6 0))
  (let ((db (make-database)))
@@ -671,13 +652,20 @@
            (and (/3 (? x))
                 (and (/2 (? x)) (/2 (? x)))
                 (/3 0))))
-   (database-query '(/6 ?x) db)))
+   (stream->list (database-query '(/6 ?x) db))))
 
 (define (disjoin disjuncts frame-stream database)
-  (stream-flatmap
-   (lambda (disjunct)
-     (qeval disjunct frame-stream database))
-   disjuncts))
+  (if (null? disjuncts)
+      the-empty-stream
+      (interleave-delayed
+       (qeval (car disjuncts)
+              frame-stream
+              database)
+       (delay (disjoin (cdr disjuncts)
+                       frame-stream
+                       database)))))
+
+(put 'or 'qeval disjoin)
 
 (put 'always-true 'qeval
      (lambda (exps frame-stream database)
@@ -685,7 +673,8 @@
 
 (test
  '((always-true))
- (database-query '(always-true) (make-database)))
+ (stream->list
+  (database-query '(always-true) (make-database))))
 
 (test
  '(())
@@ -709,13 +698,11 @@
     (disjoin '((even (? x)) (odd (? y)))
              '(()) db))))
 
-(put 'or 'qeval disjoin)
-
 (test
  '((same a a))
  (let ((db (make-database)))
    ((db 'add-rule!) '(rule (same (? x) (? x))))
-   (database-query '(same a a) db)))
+   (stream->list (database-query '(same a a) db))))
 
 (test
  '((plus 2 2 4))
@@ -733,20 +720,23 @@
                (and (inc (? d) (? a))
                     (inc (? e) (? c))
                     (plus (? d) (? b) (? e))))))
-   (database-query '(plus 2 2 ?x) db)))
+   (stream->list (database-query '(plus 2 2 ?x) db))))
 
-(define (lisp-value exps frame-stream database)
-  (let ((args (cdr exps))
-        (predicate (eval (car exps)
-                         (scheme-report-environment 5))))
-    (stream-filter
-     (lambda (frame)
-       (apply predicate
-              (map
-               (lambda (exp)
-                 (instantiate exp frame '()))
-               args)))
-     frame-stream)))
+(define (execute call)
+  (apply (eval (car call) (scheme-report-environment 5))
+         (cdr call)))
+
+(define (lisp-value call frame-stream database)
+  (stream-flatmap
+   (lambda (frame)
+     (if (execute
+          (instantiate
+           call frame
+           (lambda (v f)
+             (error "unbound variable -- lisp-value" v))))
+         (singleton-stream frame)
+         the-empty-stream))
+   frame-stream))
 
 (put 'lisp-value 'qeval lisp-value)
 
@@ -763,26 +753,28 @@
   (lisp-value '(> (? y) (? x)) '((((? x) . 0) ((? y) . 1)))
               (make-database))))
 
-(define (qeval-not exps frame-stream database)
-  (stream-filter
+(define (negate exps frame-stream database)
+  (stream-flatmap
    (lambda (frame)
-     (stream-null?
-      (qeval (car exps)
-             (singleton-stream frame)
-             database)))
+     (if (stream-null? (qeval (car exps)
+                              (singleton-stream frame)
+                              database))
+         (singleton-stream frame)
+         the-empty-stream))
    frame-stream))
 
-(put 'not 'qeval qeval-not)
+(put 'not 'qeval negate)
 
 (test
  '((and (a 0) (not (b ?y))))
  (let ((db (make-database)))
    ((db 'add-assertion!)
     '(a 0))
-   (database-query
-    '(and (a ?x)
-          (not (b ?y)))
-    db)))
+   (stream->list
+    (database-query
+     '(and (a ?x)
+           (not (b ?y)))
+     db))))
 
 (test
  '((((? x) . 1)))
@@ -791,7 +783,7 @@
    ((db 'add-assertion!) '(even 2))
    ((db 'add-assertion!) '(even 4))
    (stream->list
-    (qeval-not
+    (negate
      '((even (? x)))
      '((((? x) . 0)) (((? x) . 1)) (((? x) . 2)))
      db))))
@@ -810,117 +802,7 @@
                       (rule (inc-inc ?a ?b)
                             (and (inc ?a ?c)
                                  (inc ?c ?b)))))
-   (database-query '(inc-inc ?x ?y) db)))
-
-(define (frame-stream-accumulate func var frame-stream)
-  (func
-   (stream->list
-    (stream-map
-     (lambda (frame)
-       (instantiate
-        var frame
-        (lambda (v f)
-          (error
-           "unbound variable -- frame-stream-accumulate"
-           v))))
-     frame-stream))))
-
-(test
- 4
- (frame-stream-accumulate
-  (lambda (values) (apply max values))
-  '(? x) '((((? x) . 1)) (((? x) . 4)) (((? x) . 3)))))
-
-(test
- 3
- (frame-stream-accumulate
-  (lambda (values) (apply + values))
-  '(? y) '((((? y) . (? x)) ((? x) . 3)))))
-
-(define (get-var-value var frame)
-  (instantiate var frame
-               (lambda (v f) '*unbound*)))
-
-(define (equal-var-values? value-0 value-1)
-  (and (not (eq? value-0 '*unbound*))
-       (not (eq? value-1 '*unbound*))
-       (equal? value-0 value-1)))
-
-(define (frame-stream-remove frame-stream var value)
-  (stream-filter
-   (lambda (frame)
-     (not (equal-var-values? value
-                             (get-var-value var frame))))
-   frame-stream))
-
-(define (make-distinct exps frame-stream-0 database)
-  (let ((var (car exps)))
-    (define (run frame-stream)
-      (if (stream-null? frame-stream)
-          frame-stream
-          (let ((head-value
-                 (get-var-value var
-                                (stream-car frame-stream))))
-            (cons-stream
-             (stream-car frame-stream)
-             (frame-stream-remove
-              (run (stream-cdr frame-stream))
-              var head-value)))))
-    (run frame-stream-0)))
-
-(test
- '((((? x) . 0)))
- (stream->list
-  (make-distinct
-   '((? x))
-   '((((? x) . 0)) (((? x) . 0)))
-   (make-database))))
-(test
- '((((? y) . 1))
-   (((? y) . 3) (? x) . 1)
-   (((? y) . 5))
-   (((? z) . 9)))
- (stream->list
-  (make-distinct
-   '((? y))
-   '((((? y) . 1))
-     (((? y) . 3) (? x) . 1)
-     (((? z) . 5) ((? y) . 3))
-     (((? y) . 5))
-     (((? z) . 9))
-     (((? z) . 4) ((? y) . 1)))
-   (make-database))))
-
-(put 'make-distinct 'qeval make-distinct)
-(test
- '((b 1))
- (let ((db (make-database)))
-   (database-add db '((a 1) (a 1) (a 1)
-                      (rule (b ?x) (and (a ?x) (make-distinct ?x)))))
-   (database-query '(b ?x) db)))
-
-(test
- 6
- (let ((db (make-database)))
-   (database-add db '((a 1) (a 2) (a 3)))
-   (database-query '(sum ?x (a ?x)) db)))
-(test
- 4
- (let ((db (make-database)))
-   (database-add db '((a 1) (a 1) (a 1) (a 3)))
-   (database-query '(sum ?x (and (a ?x)
-                                 (make-distinct ?x)))
-                   db)))
-(test
- 2
- (let ((db (make-database)))
-   (database-add db '((a 1) (a 2) (a 3)))
-   (database-query '(average ?x (a ?x)) db)))
-(test
- 3
- (let ((db (make-database)))
-   (database-add db '((a 1) (a 2) (a 3)))
-   (database-query '(maximum ?x (a ?x)) db)))
+   (stream->list (database-query '(inc-inc ?x ?y) db))))
 
 (define microshaft-data-base
   '((address (bitdiddle ben) (slumerville (ridge road) 10))
@@ -1006,7 +888,8 @@
        (newline)
        (display ";;; query results:")
        (newline)
-       (let ((answer (database-query query db)))
+       (let ((answer
+              (stream->list (database-query query db))))
          (if (pair? answer)
              (for-each (lambda (query-result)
                          (display query-result)
@@ -1023,7 +906,7 @@
 
 (test-end)
 
-(set! debug #t)
+(set! log? #t)
 
 (define genealogy
   '((son adam cain) (son cain enoch)
@@ -1057,6 +940,8 @@
    (database-add db son-rule)
    (database-add db great-grandson-rule)
    (database-add db append-to-form-rule)
-   (list (database-query '(?rel adam irad) db)
-         (database-query '((great grandson) adam cain) db)
-         (database-query '(?rel adam mehujael) db))))
+   (list (stream->list
+          (database-query '(?rel adam irad) db))
+         (stream->list
+          (database-query '((great grandson) adam cain) db))
+         (stream->list (database-query '(?rel adam mehujael) db)))))
