@@ -818,6 +818,52 @@
                                  (inc ?c ?b)))))
    (stream->list (database-query '(inc-inc ?x ?y) db))))
 
+(define (singleton-stream? s)
+  (and (not (stream-null? s))
+       (stream-null? (stream-cdr s))))
+
+(test #t (singleton-stream? (cons-stream 1 the-empty-stream)))
+(test #f (singleton-stream? the-empty-stream))
+
+(define (uniquely-asserted exps frame-stream db)
+  (stream-flatmap
+   (lambda (frame)
+     (let ((s (qeval (car exps)
+                     (singleton-stream frame)
+                     db)))
+       (if (singleton-stream? s)
+           s
+           the-empty-stream)))
+   frame-stream))
+
+(put 'unique 'qeval uniquely-asserted)
+
+(test
+ '((((? x) . 0))
+   (((? x) . 0)))
+ (let ((db (make-database)))
+   (database-add db '((a 0)))
+   (stream->list
+    (uniquely-asserted
+     '((a (? x)))
+     '((((? x) . 0))
+       (((? x) . 1))
+       (((? x) . 0)))
+     db))))
+
+(test
+ '((unique (a)))
+ (let ((db (make-database)))
+   (database-add db '((a)))
+   (stream->list (database-query '(unique (a)) db))))
+
+(test
+ '()
+ (let ((db (make-database)))
+   (database-add db '((b 0)))
+   (database-add db '((b 1)))
+   (stream->list (database-query '(unique (b ?x)) db))))
+
 (define microshaft-data-base
   '((address (bitdiddle ben) (slumerville (ridge road) 10))
     (job (bitdiddle ben) (computer wizard))
