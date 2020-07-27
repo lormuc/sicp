@@ -864,6 +864,73 @@
    (database-add db '((b 1)))
    (stream->list (database-query '(unique (b ?x)) db))))
 
+(define (merge-frames frame-0 frame-1)
+  (if (null? frame-0)
+      frame-1
+      (let ((extended-frame-1
+             (extend-if-possible
+              (binding-variable (car frame-0))
+              (binding-value (car frame-0))
+              frame-1)))
+        (if (eq? 'failed extended-frame-1)
+            'failed
+            (merge-frames
+             (cdr frame-0)
+             extended-frame-1)))))
+
+(test 'failed
+      (merge-frames '(((? x) . 0)) '(((? x) . 1))))
+
+(test
+ 0
+ (instantiate '(? x)
+              (merge-frames '(((? x) . (? y)))
+                            '(((? y) . 0)))
+              (lambda (v f) 'failed)))
+
+(define (compatible-frames exp-0-frames exp-1-frames)
+  (stream-flatmap
+   (lambda (frame-0)
+     (stream-flatmap
+      (lambda (frame-1)
+        (let ((m (merge-frames frame-0 frame-1)))
+          (if (eq? m 'failed)
+              the-empty-stream
+              (singleton-stream m))))
+      exp-1-frames))
+   exp-0-frames))
+
+(define (faster-conjoin exps frame-stream database)
+  (stream-flatmap
+   (lambda (frame)
+     (compatible-frames
+      (qeval (car exps)
+             (singleton-stream frame)
+             database)
+      (qeval (cadr exps)
+             (singleton-stream frame)
+             database)))
+   frame-stream))
+
+(put 'faster-and 'qeval faster-conjoin)
+
+(test
+ '((((? x) . 2)))
+ (let ((db (make-database)))
+   (database-add db '((a 0) (a 1) (a 2)))
+   (database-add db '((b 2) (b 3)))
+   (stream->list
+    (faster-conjoin '((a (? x)) (b (? x)))
+                    '(()) db))))
+
+(test
+ '((faster-and (y b) (x b)))
+ (let ((db (make-database)))
+   (database-add db '((x a) (x b) (x c)))
+   (database-add db '((y b) (y d)))
+   (stream->list
+    (database-query '(faster-and (y ?u) (x ?u)) db))))
+
 (define microshaft-data-base
   '((address (bitdiddle ben) (slumerville (ridge road) 10))
     (job (bitdiddle ben) (computer wizard))
