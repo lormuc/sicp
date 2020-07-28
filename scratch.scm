@@ -621,6 +621,14 @@
                      (sequence->exp (cond-actions first))
                      (expand-clauses rest))))))
 
+(define (let? exp) (tagged-list? exp 'let))
+
+(define (let->combination exp)
+  (let ((bindings (cadr exp))
+        (body (cddr exp)))
+    (let ((vars (map car bindings))
+          (exps (map cadr bindings)))
+      (cons (make-lambda vars body) exps))))
 
 (define ec-eval-operations
   (list
@@ -669,7 +677,12 @@
    (list 'adjoin-arg adjoin-arg)
    (list 'last-operand? last-operand?)
    (list 'no-more-exps? no-more-exps?)
-   (list 'make-error list)))
+
+   (list 'make-error list)
+   (list 'cond? cond?)
+   (list 'cond->if cond->if)
+   (list 'let? let?)
+   (list 'let->combination let->combination)))
 
 (define (make-ec-eval-machine)
   (make-machine
@@ -704,6 +717,10 @@
      (branch (label ev-lambda))
      (test (op begin?) (reg exp))
      (branch (label ev-begin))
+     (test (op cond?) (reg exp))
+     (branch (label ev-cond))
+     (test (op let?) (reg exp))
+     (branch (label ev-let))
      (test (op application?) (reg exp))
      (branch (label ev-application))
 
@@ -860,6 +877,15 @@
       (op define-variable!) (reg unev) (reg val) (reg env))
      (assign val (const ok))
      (goto (reg continue))
+
+     ev-cond
+     (assign exp (op cond->if) (reg exp))
+     (goto (label eval-dispatch))
+
+     ev-let
+     (assign exp (op let->combination) (reg exp))
+     (goto (label eval-dispatch))
+
      done)))
 
 (define (ec-eval exp . env)
@@ -883,6 +909,21 @@
 
 (test '(unknown-procedure-type-error 3)
       (ec-eval '(3)))
+
+(test 0
+      (ec-eval '(cond (#t 0))))
+(test 2
+      (ec-eval '(cond (#f 0) (#f 1) (#t 2) (#t 3))))
+(test 3
+      (ec-eval '(cond (#f 1) (else 3))))
+
+
+(test 1
+      (ec-eval '(let () 1)))
+(test 0
+      (ec-eval '(let ((x 0)) x)))
+(test 3
+      (ec-eval '(let ((y 1) (z 2)) (+ z 1))))
 
 (test-end)
 
