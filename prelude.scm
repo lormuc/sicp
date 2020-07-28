@@ -6,11 +6,13 @@
 (define log? #f)
 (define (log-line . args)
   (if log?
-      (if (= 1 (length args))
-          (begin (display (car args))
-                 (newline))
-          (begin (display args)
-                 (newline)))))
+      (cond ((null? args)
+             (newline))
+            ((= 1 (length args))
+             (display (car args))
+             (newline))
+            (else (display args)
+                  (newline)))))
 
 (define (tagged-list? exp tag)
   (if (pair? exp)

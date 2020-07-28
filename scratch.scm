@@ -817,9 +817,9 @@
      (goto (label ev-sequence))
 
      ev-sequence
+     (test (op no-more-exps?) (reg unev))
+     (branch (label ev-sequence-end))
      (assign exp (op first-exp) (reg unev))
-     (test (op last-exp?) (reg unev))
-     (branch (label ev-sequence-last-exp))
      (save unev)
      (save env)
      (assign continue (label ev-sequence-continue))
@@ -829,9 +829,26 @@
      (restore unev)
      (assign unev (op rest-exps) (reg unev))
      (goto (label ev-sequence))
-     ev-sequence-last-exp
+     ev-sequence-end
      (restore continue)
-     (goto (label eval-dispatch))
+     (goto (reg continue))
+
+     ;; ev-sequence
+     ;; (assign exp (op first-exp) (reg unev))
+     ;; (test (op last-exp?) (reg unev))
+     ;; (branch (label ev-sequence-last-exp))
+     ;; (save unev)
+     ;; (save env)
+     ;; (assign continue (label ev-sequence-continue))
+     ;; (goto (label eval-dispatch))
+     ;; ev-sequence-continue
+     ;; (restore env)
+     ;; (restore unev)
+     ;; (assign unev (op rest-exps) (reg unev))
+     ;; (goto (label ev-sequence))
+     ;; ev-sequence-last-exp
+     ;; (restore continue)
+     ;; (goto (label eval-dispatch))
 
      ev-if
      (save exp)
@@ -992,6 +1009,7 @@
 
 (set! log? #t)
 
+(log-line "iterative factorial")
 (for-each
  log-line
  (ec-eval-program
@@ -1006,7 +1024,10 @@
     (factorial 2)
     (factorial 3)
     (factorial 4))))
+(log-line "...")
+(log-line '((factorial n) (+ (* 37 n) 33) (+ (* 3 n) 14)))
 
+(log-line)
 (log-line "recursive factorial")
 (for-each
  log-line
@@ -1019,4 +1040,5 @@
     (factorial 2)
     (factorial 3)
     (factorial 4))))
-((+ (* 32 n) -16) (+ (* 5 n) 3))
+(log-line "...")
+(log-line '((factorial n) (+ (* 34 n) -16) (+ (* 8 n) 3)))
