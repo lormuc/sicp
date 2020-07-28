@@ -55,16 +55,14 @@
       (set! max-depth 0)
       (set! current-depth 0)
       'done)
-    (define (print-statistics)
-      (display (list 'total-pushes  '= number-pushes
-                     'maximum-depth '= max-depth))
-      (newline))
     (define (dispatch message)
       (cond ((eq? message 'push) push)
             ((eq? message 'pop) (pop))
             ((eq? message 'initialize) (initialize))
-            ((eq? message 'print-statistics)
-             (print-statistics))
+            ((eq? message 'get-push-count)
+             number-pushes)
+            ((eq? message 'get-max-depth)
+             max-depth)
             (else
              (error "unknown request -- stack" message))))
     dispatch))
@@ -76,9 +74,7 @@
         (the-instruction-sequence '()))
     (let ((the-ops
            (list (list 'initialize-stack
-                       (lambda () (stack 'initialize)))
-                 (list 'print-stack-statistics
-                       (lambda () (stack 'print-statistics)))))
+                       (lambda () (stack 'initialize)))))
           (register-table
            (list (list 'pc pc) (list 'flag flag))))
       (define (allocate-register name)
@@ -153,7 +149,7 @@
 
 (define (trace-instruction inst-text inst-procedure)
   (lambda ()
-    (log-line inst-text)
+    ;; (log-line inst-text)
     (inst-procedure)))
 
 (define (update-insts! insts labels machine)
@@ -928,20 +924,30 @@
 
      done)))
 
-(define (ec-eval exp . env)
-  (let ((env (if (null? env)
-                 (setup-environment)
-                 (car env))))
-    (let ((machine (make-ec-eval-machine)))
-      (set-register-contents! machine 'env env)
-      (set-register-contents! machine 'exp exp)
-      (start machine)
-      (get-register-contents machine 'val))))
+(define (ec-eval exp)
+  (car (machine-eval (make-ec-eval-machine)
+                     exp
+                     (setup-environment))))
+
+(define (machine-eval machine exp env)
+  (set-register-contents! machine 'env env)
+  (set-register-contents! machine 'exp exp)
+  (start machine)
+  (list (get-register-contents machine 'val)
+        ((machine 'stack) 'get-push-count)
+        ((machine 'stack) 'get-max-depth)))
+
+(define (ec-eval-program exps)
+  (let ((machine (make-ec-eval-machine))
+        (env (setup-environment)))
+    (define (loop exps)
+      (if (null? exps)
+          '()
+          (cons (machine-eval machine (car exps) env)
+                (loop (cdr exps)))))
+    (loop exps)))
 
 (test-begin)
-
-(test 2
-      (ec-eval '(+ 1 1) (setup-environment)))
 
 (test
  5
@@ -962,6 +968,41 @@
 (test 0 (ec-eval '(let ((x 0)) x)))
 (test 3 (ec-eval '(let ((y 1) (z 2)) (+ z 1))))
 
+(test 0 ((make-stack) 'get-push-count))
+(test 0 ((make-stack) 'get-max-depth))
+(test 2 (let ((s (make-stack)))
+          ((s 'push) 0)
+          ((s 'push) 0)
+          (s 'pop)
+          (s 'get-push-count)))
+(test 3 (let ((s (make-stack)))
+          ((s 'push) 0)
+          ((s 'push) 0)
+          ((s 'push) 0)
+          (s 'pop)
+          ((s 'push) 0)
+          (s 'get-max-depth)))
+
+(test '(0)
+      (map car (ec-eval-program '(0))))
+(test '(ok 3)
+      (map car (ec-eval-program '((define x 3) x))))
+
 (test-end)
 
 (set! log? #t)
+
+(for-each
+ log-line
+ (ec-eval-program
+  '((define (factorial n)
+      (define (iter product counter)
+        (if (> counter n)
+            product
+            (iter (* counter product)
+                  (+ counter 1))))
+      (iter 1 1))
+    (factorial 1)
+    (factorial 2)
+    (factorial 3)
+    (factorial 4))))
