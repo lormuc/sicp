@@ -151,6 +151,11 @@
                              insts)
                        labels)))))))
 
+(define (trace-instruction inst-text inst-procedure)
+  (lambda ()
+    (log-line inst-text)
+    (inst-procedure)))
+
 (define (update-insts! insts labels machine)
   (let ((pc (get-register machine 'pc))
         (flag (get-register machine 'flag))
@@ -160,9 +165,11 @@
      (lambda (inst)
        (set-instruction-execution-proc!
         inst
-        (make-execution-procedure
-         (instruction-text inst) labels machine
-         pc flag stack ops)))
+        (trace-instruction
+         (instruction-text inst)
+         (make-execution-procedure
+          (instruction-text inst) labels machine
+          pc flag stack ops))))
      insts)))
 
 (define (make-instruction text)
@@ -680,9 +687,15 @@
 
    (list 'make-error list)
    (list 'cond? cond?)
-   (list 'cond->if cond->if)
    (list 'let? let?)
-   (list 'let->combination let->combination)))
+   (list 'let->combination let->combination)
+   (list 'cond-clauses cond-clauses)
+   (list 'cond-predicate cond-predicate)
+   (list 'cond-actions cond-actions)
+   (list 'cond-else-clause? cond-else-clause?)
+   (list 'null? null?)
+   (list 'car car)
+   (list 'cdr cdr)))
 
 (define (make-ec-eval-machine)
   (make-machine
@@ -879,8 +892,35 @@
      (goto (reg continue))
 
      ev-cond
-     (assign exp (op cond->if) (reg exp))
+     (save continue)
+     (assign unev (op cond-clauses) (reg exp))
+     ev-cond-loop
+     (test (op null?) (reg unev))
+     (branch (label ev-cond-clauses-null))
+     (assign exp (op car) (reg unev))
+     (test (op cond-else-clause?) (reg exp))
+     (assign exp (op cond-predicate) (reg exp))
+     (branch (label ev-cond-true))
+     (save env)
+     (save unev)
+     (assign continue (label ev-cond-0))
      (goto (label eval-dispatch))
+     ev-cond-0
+     (restore unev)
+     (restore env)
+     (test (op true?) (reg val))
+     (branch (label ev-cond-true))
+     ev-cond-false
+     (assign unev (op cdr) (reg unev))
+     (goto (label ev-cond-loop))
+     ev-cond-true
+     (assign unev (op car) (reg unev))
+     (assign unev (op cond-actions) (reg unev))
+     (goto (label ev-sequence))
+     ev-cond-clauses-null
+     (assign val (const #f))
+     (restore continue)
+     (goto (reg continue))
 
      ev-let
      (assign exp (op let->combination) (reg exp))
@@ -910,20 +950,17 @@
 (test '(unknown-procedure-type-error 3)
       (ec-eval '(3)))
 
-(test 0
-      (ec-eval '(cond (#t 0))))
-(test 2
-      (ec-eval '(cond (#f 0) (#f 1) (#t 2) (#t 3))))
-(test 3
-      (ec-eval '(cond (#f 1) (else 3))))
+(test 0 (ec-eval '(cond (#t 0))))
+(test 2 (ec-eval '(cond (#f 0) (#f 1) (#t 2) (#t 3))))
+(test 3 (ec-eval '(cond (#f 1) (else 3))))
+(test #f (ec-eval '(cond)))
+(test 5 (ec-eval '(cond (#f #f)
+                        (#t (cond (#f #f)
+                                  (else 5))))))
 
-
-(test 1
-      (ec-eval '(let () 1)))
-(test 0
-      (ec-eval '(let ((x 0)) x)))
-(test 3
-      (ec-eval '(let ((y 1) (z 2)) (+ z 1))))
+(test 1 (ec-eval '(let () 1)))
+(test 0 (ec-eval '(let ((x 0)) x)))
+(test 3 (ec-eval '(let ((y 1) (z 2)) (+ z 1))))
 
 (test-end)
 

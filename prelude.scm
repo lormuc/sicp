@@ -6,8 +6,11 @@
 (define log? #f)
 (define (log-line . args)
   (if log?
-      (begin (display args)
-             (newline))))
+      (if (= 1 (length args))
+          (begin (display (car args))
+                 (newline))
+          (begin (display args)
+                 (newline)))))
 
 (define (tagged-list? exp tag)
   (if (pair? exp)
