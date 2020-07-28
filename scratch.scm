@@ -1009,36 +1009,20 @@
 
 (set! log? #t)
 
-(log-line "iterative factorial")
+(log-line '((fib n) push-count max-depth))
 (for-each
  log-line
- (ec-eval-program
-  '((define (factorial n)
-      (define (iter product counter)
-        (if (> counter n)
-            product
-            (iter (* counter product)
-                  (+ counter 1))))
-      (iter 1 1))
-    (factorial 1)
-    (factorial 2)
-    (factorial 3)
-    (factorial 4))))
+ (cdr
+  (ec-eval-program
+   '((define (fib n)
+       (if (< n 2)
+           n
+           (+ (fib (- n 1)) (fib (- n 2)))))
+     (fib 0)
+     (fib 1)
+     (fib 2)
+     (fib 3)
+     (fib 4)
+     (fib 5)))))
 (log-line "...")
-(log-line '((factorial n) (+ (* 37 n) 33) (+ (* 3 n) 14)))
-
-(log-line)
-(log-line "recursive factorial")
-(for-each
- log-line
- (ec-eval-program
-  '((define (factorial n)
-      (if (= n 1)
-          1
-          (* (factorial (- n 1)) n)))
-    (factorial 1)
-    (factorial 2)
-    (factorial 3)
-    (factorial 4))))
-(log-line "...")
-(log-line '((factorial n) (+ (* 34 n) -16) (+ (* 8 n) 3)))
+(log-line '((fib n) (+ (* 60 (fib (+ n 1))) -42) (+ (* 8 n) 3)))
