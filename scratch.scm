@@ -1006,3 +1006,17 @@
     (factorial 2)
     (factorial 3)
     (factorial 4))))
+
+(log-line "recursive factorial")
+(for-each
+ log-line
+ (ec-eval-program
+  '((define (factorial n)
+      (if (= n 1)
+          1
+          (* (factorial (- n 1)) n)))
+    (factorial 1)
+    (factorial 2)
+    (factorial 3)
+    (factorial 4))))
+((+ (* 32 n) -16) (+ (* 5 n) 3))
