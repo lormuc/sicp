@@ -691,7 +691,8 @@
    (list 'cond-else-clause? cond-else-clause?)
    (list 'null? null?)
    (list 'car car)
-   (list 'cdr cdr)))
+   (list 'cdr cdr)
+   (list 'symbol? symbol?)))
 
 (define (make-ec-eval-machine)
   (make-machine
@@ -751,15 +752,22 @@
 
      ev-application
      (save continue)
-     (save env)
      (assign unev (op operands) (reg exp))
      (save unev)
      (assign exp (op operator) (reg exp))
+     (test (op symbol?) (reg exp))
+     (branch (label ev-appl-op-no-save-env))
+     (save env)
      (assign continue (label ev-appl-did-operator))
      (goto (label eval-dispatch))
      ev-appl-did-operator
-     (restore unev)
      (restore env)
+     (goto (label ev-appl-did-operator-no-save))
+     ev-appl-op-no-save-env
+     (assign continue (label ev-appl-did-operator-no-save))
+     (goto (label eval-dispatch))
+     ev-appl-did-operator-no-save
+     (restore unev)
      (assign argl (op empty-arglist))
      (assign proc (reg val))
      (test (op no-operands?) (reg unev))
@@ -817,9 +825,9 @@
      (goto (label ev-sequence))
 
      ev-sequence
-     (test (op no-more-exps?) (reg unev))
-     (branch (label ev-sequence-end))
      (assign exp (op first-exp) (reg unev))
+     (test (op last-exp?) (reg unev))
+     (branch (label ev-sequence-last-exp))
      (save unev)
      (save env)
      (assign continue (label ev-sequence-continue))
@@ -829,26 +837,9 @@
      (restore unev)
      (assign unev (op rest-exps) (reg unev))
      (goto (label ev-sequence))
-     ev-sequence-end
+     ev-sequence-last-exp
      (restore continue)
-     (goto (reg continue))
-
-     ;; ev-sequence
-     ;; (assign exp (op first-exp) (reg unev))
-     ;; (test (op last-exp?) (reg unev))
-     ;; (branch (label ev-sequence-last-exp))
-     ;; (save unev)
-     ;; (save env)
-     ;; (assign continue (label ev-sequence-continue))
-     ;; (goto (label eval-dispatch))
-     ;; ev-sequence-continue
-     ;; (restore env)
-     ;; (restore unev)
-     ;; (assign unev (op rest-exps) (reg unev))
-     ;; (goto (label ev-sequence))
-     ;; ev-sequence-last-exp
-     ;; (restore continue)
-     ;; (goto (label eval-dispatch))
+     (goto (label eval-dispatch))
 
      ev-if
      (save exp)
@@ -1005,24 +996,166 @@
 (test '(ok 3)
       (map car (ec-eval-program '((define x 3) x))))
 
+(test 0 (ec-eval '(let ((x 0))
+                    ((let ((x 1)) (lambda (y) y)) x))))
+
+(define (link linkage code)
+  (cond ((eq? linkage 'next) code)
+        ((eq? linkage 'return)
+         (append code '((goto (reg continue)))))
+        ((label-exp? linkage)
+         (append code `((goto ,linkage))))
+        (else (error "bad linkage -- link" linkage))))
+
+(define (compile exp target linkage)
+  (link linkage
+   (cond ((self-evaluating? exp)
+          `((assign val (const ,exp)))))))
+
+(define (make-instruction-sequence needs modifies statements)
+  (list needs modifies statements))
+
+(define (registers-modified instruction-sequence)
+  (cadr instruction-sequence))
+
+(define (registers-needed instruction-sequence)
+  (car instruction-sequence))
+
+(define (statements instruction-sequence)
+  (caddr instruction-sequence))
+
+(define (empty-instruction-sequence)
+  (make-instruction-sequence '() '() '()))
+
+(define (list-union s1 s2)
+  (cond ((null? s1) s2)
+        ((memq (car s1) s2) (list-union (cdr s1) s2))
+        (else (cons (car s1) (list-union (cdr s1) s2)))))
+
+(define (list-difference s1 s2)
+  (cond ((null? s1) s1)
+        ((memq (car s1) s2)
+         (list-difference (cdr s1) s2))
+        (else (cons (car s1)
+                    (list-difference (cdr s1) s2)))))
+
+(define (append-instruction-sequences . seqs)
+  (define (append-2-sequences s1 s2)
+    (make-instruction-sequence
+     (list-union (registers-needed s1)
+                 (list-difference (registers-needed s2)
+                                  (registers-modified s1)))
+     (list-union (registers-modified s1)
+                 (registers-modified s2))
+     (append (statements s1) (statements s2))))
+  (if (null? seqs)
+      (empty-instruction-sequence)
+      (append-2-sequences
+       (car seqs)
+       (apply append-instruction-sequences
+              (cdr seqs)))))
+
+(test
+ '((assign a (const 0))
+   (assign b (const 1)))
+ (statements (make-instruction-sequence
+              '() '(a b)
+              '((assign a (const 0))
+                (assign b (const 1))))))
+
+(define (needs-register? s r)
+  (memq r (registers-needed s)))
+
+(define (modifies-register? s r)
+  (memq r (registers-modified s)))
+
+(define (preserving registers s1 s2)
+  (if (null? registers)
+      (append-instruction-sequences s1 s2)
+      (let ((register (car registers)))
+        (if (and (modifies-register? s1 register)
+                 (needs-register? s2 register))
+            (preserving
+             (cdr registers)
+             (make-instruction-sequence
+              (list-union (registers-needed s1)
+                          (list register))
+              (list-difference (registers-modified s1)
+                               (list register))
+              (append `((save ,register))
+                      (statements s1)
+                      `((restore ,register))))
+             s2)
+            (preserving (cdr registers) s1 s2)))))
+
+(test '((assign val (const 5)))
+      (compile 5 'val 'next))
+(test '((assign val (const 3))
+        (goto (reg continue)))
+      (compile 3 'val 'return))
+(test '((assign val (const 5))
+        (goto (label x)))
+      (compile 5 'val '(label x)))
+(test-error (link  '() '()))
+
+(test
+ (list
+  '(env continue) '(val)
+  '((assign val (op lookup-variable-value
+                    (const x) (reg env)))
+    (goto (reg continue))))
+ (make-instruction-sequence
+  '(env continue) '(val)
+  '((assign val (op lookup-variable-value
+                    (const x) (reg env)))
+    (goto (reg continue)))))
+
+(test '(a c e) (list-difference '(a b c d e f) '(b d f)))
+
+(test (list '() '() '()) (empty-instruction-sequence))
+
+(test (empty-instruction-sequence)
+      (append-instruction-sequences))
+(test
+ (make-instruction-sequence
+  (list-union '(a b) (list-difference '(a c d) '(c d)))
+  (list-union '(c d) '(d e f))
+  '((assign c (reg a))
+    (assign d (reg a))))
+ (append-instruction-sequences
+  (make-instruction-sequence '(a b) '(c d)
+                             '((assign c (reg a))))
+  (make-instruction-sequence '(a c d) '(d e f)
+                             '((assign d (reg a))))))
+
+(test
+ '((assign x (const 0))
+   (assign v (reg w)))
+ (statements
+  (preserving
+   '(x y)
+   (make-instruction-sequence '() '(x)
+                              '((assign x (const 0))))
+   (make-instruction-sequence '(w) '(v)
+                              '((assign v (reg w)))))))
+
+(test
+ '((save b)
+   (save a)
+   (assign a (const 0))
+   (assign b (const 1))
+   (restore a)
+   (restore b)
+   (assign c (reg a)))
+ (statements
+  (preserving
+   '(a b)
+   (make-instruction-sequence '() '(a b)
+                              '((assign a (const 0))
+                                (assign b (const 1))))
+   (make-instruction-sequence '(a b) '(c d)
+                              '((assign c (reg a)))))))
+
 (test-end)
 
 (set! log? #t)
-
-(log-line '((fib n) push-count max-depth))
-(for-each
- log-line
- (cdr
-  (ec-eval-program
-   '((define (fib n)
-       (if (< n 2)
-           n
-           (+ (fib (- n 1)) (fib (- n 2)))))
-     (fib 0)
-     (fib 1)
-     (fib 2)
-     (fib 3)
-     (fib 4)
-     (fib 5)))))
-(log-line "...")
-(log-line '((fib n) (+ (* 60 (fib (+ n 1))) -42) (+ (* 8 n) 3)))
