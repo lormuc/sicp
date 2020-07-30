@@ -232,7 +232,7 @@
       (compile-procedure-call target linkage make-label)))))
 
 (define (construct-arglist operand-codes)
-  (let ((operand-codes (reverse operand-codes)))
+  (let ((operand-codes operand-codes))
     (if (null? operand-codes)
         (make-instruction-sequence
          '() '(argl)
@@ -245,10 +245,14 @@
                  '((assign argl (op list) (reg val)))))))
           (if (null? (cdr operand-codes))
               code-to-get-last-arg
-              (preserving '(env)
-                          code-to-get-last-arg
-                          (code-to-get-rest-args
-                           (cdr operand-codes))))))))
+              (append-instruction-sequences
+               (preserving '(env)
+                           code-to-get-last-arg
+                           (code-to-get-rest-args
+                            (cdr operand-codes)))
+               (make-instruction-sequence
+                '(argl) '(argl)
+                '((assign argl (op reverse) (reg argl))))))))))
 
 (define (code-to-get-rest-args operand-codes)
   (let ((code-for-next-arg
@@ -278,7 +282,7 @@
        (parallel-instruction-sequences
         (append-instruction-sequences
          compiled-branch
-         (compile-proc-appl target compiled-linkage))
+         (compile-proc-appl target compiled-linkage make-label))
         (append-instruction-sequences
          primitive-branch
          (end-with-linkage
@@ -292,7 +296,7 @@
                      (reg argl)))))))
        after-call))))
 
-(define (compile-proc-appl target linkage)
+(define (compile-proc-appl target linkage make-label)
   (cond ((and (eq? target 'val) (not (eq? linkage 'return)))
          (make-instruction-sequence
           '(proc) all-regs
@@ -403,3 +407,43 @@
    (list-union (registers-modified s1)
                (registers-modified s2))
    (append (statements s1) (statements s2))))
+
+
+(define machine-operations
+  (list
+   (list 'true? true?)
+   (list 'make-procedure make-procedure)
+   (list 'compound-procedure? compound-procedure?)
+   (list 'procedure-parameters procedure-parameters)
+   (list 'procedure-body procedure-body)
+   (list 'procedure-environment procedure-environment)
+   (list 'extend-environment extend-environment)
+   (list 'lookup-variable-value lookup-variable-value)
+   (list 'set-variable-value! set-variable-value!)
+   (list 'define-variable! define-variable!)
+   (list 'primitive-procedure? primitive-procedure?)
+   (list 'apply-primitive-procedure apply-primitive-procedure)
+   (list 'empty-arglist empty-arglist)
+   (list 'adjoin-arg adjoin-arg)
+   (list 'last-operand? last-operand?)
+   (list 'null? null?)
+   (list 'car car)
+   (list 'cdr cdr)
+   (list 'list list)
+   (list 'cons cons)
+   (list 'make-compiled-procedure make-compiled-procedure)
+   (list 'compiled-procedure-env compiled-procedure-env)
+   (list 'compiled-procedure-entry compiled-procedure-entry)
+   (list 'false? false?)
+   (list 'reverse reverse)))
+
+(define (eval-compiled exp)
+  (let ((machine
+         (make-machine
+          '(exp env val proc argl continue unev)
+          machine-operations
+          (statements
+           (compile exp 'val 'next (make-make-label))))))
+    (set-register-contents! machine 'env (setup-environment))
+    (start machine)
+    (get-register-contents machine 'val)))

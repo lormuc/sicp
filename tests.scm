@@ -215,4 +215,16 @@
  (compile-sequence '((set! a 0) (set! a 1) a)
                    'val 'return (make-make-label)))
 
+(test 3 (eval-compiled 3))
+
+(test 5 (eval-compiled '((lambda (x y) (+ x y)) 3 2)))
+
+(test "left-to-right order of evaluation"
+      1
+      (eval-compiled
+       '(begin (define x 0)
+               (cons (set! x (* x 2))
+                     (set! x (+ x 1)))
+               x)))
+
 (test-end)
