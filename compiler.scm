@@ -375,8 +375,9 @@
   (if (null? registers)
       (append-instruction-sequences s1 s2)
       (let ((register (car registers)))
-        (if (and (modifies-register? s1 register)
-                 (needs-register? s2 register))
+        (if (or #t
+                (and (modifies-register? s1 register)
+                     (needs-register? s2 register)))
             (preserving
              (cdr registers)
              (make-instruction-sequence
