@@ -232,7 +232,7 @@
       (compile-procedure-call target linkage make-label)))))
 
 (define (construct-arglist operand-codes)
-  (let ((operand-codes operand-codes))
+  (let ((operand-codes (reverse operand-codes)))
     (if (null? operand-codes)
         (make-instruction-sequence
          '() '(argl)
@@ -245,14 +245,10 @@
                  '((assign argl (op list) (reg val)))))))
           (if (null? (cdr operand-codes))
               code-to-get-last-arg
-              (append-instruction-sequences
-               (preserving '(env)
-                           code-to-get-last-arg
-                           (code-to-get-rest-args
-                            (cdr operand-codes)))
-               (make-instruction-sequence
-                '(argl) '(argl)
-                '((assign argl (op reverse) (reg argl))))))))))
+              (preserving '(env)
+                          code-to-get-last-arg
+                          (code-to-get-rest-args
+                           (cdr operand-codes))))))))
 
 (define (code-to-get-rest-args operand-codes)
   (let ((code-for-next-arg
