@@ -234,32 +234,35 @@
 (define (construct-arglist operand-codes)
   (let ((operand-codes (reverse operand-codes)))
     (if (null? operand-codes)
-        (make-instruction-sequence '() '(argl)
+        (make-instruction-sequence
+         '() '(argl)
          '((assign argl (const ()))))
         (let ((code-to-get-last-arg
                (append-instruction-sequences
                 (car operand-codes)
-                (make-instruction-sequence '(val) '(argl)
+                (make-instruction-sequence
+                 '(val) '(argl)
                  '((assign argl (op list) (reg val)))))))
           (if (null? (cdr operand-codes))
               code-to-get-last-arg
               (preserving '(env)
-               code-to-get-last-arg
-               (code-to-get-rest-args
-                (cdr operand-codes))))))))
+                          code-to-get-last-arg
+                          (code-to-get-rest-args
+                           (cdr operand-codes))))))))
 
 (define (code-to-get-rest-args operand-codes)
   (let ((code-for-next-arg
          (preserving '(argl)
-          (car operand-codes)
-          (make-instruction-sequence '(val argl) '(argl)
-           '((assign argl
-              (op cons) (reg val) (reg argl)))))))
+                     (car operand-codes)
+                     (make-instruction-sequence
+                      '(val argl) '(argl)
+                      '((assign argl
+                                (op cons) (reg val) (reg argl)))))))
     (if (null? (cdr operand-codes))
         code-for-next-arg
         (preserving '(env)
-         code-for-next-arg
-         (code-to-get-rest-args (cdr operand-codes))))))
+                    code-for-next-arg
+                    (code-to-get-rest-args (cdr operand-codes))))))
 
 (define (compile-procedure-call target linkage make-label)
   (let ((primitive-branch (make-label 'primitive-branch))
@@ -294,7 +297,8 @@
          (make-instruction-sequence
           '(proc) all-regs
           `((assign continue (label ,linkage))
-            (assign val (op compiled-procedure-entry)
+            (assign val
+                    (op compiled-procedure-entry)
                     (reg proc))
             (goto (reg val)))))
         ((and (not (eq? target 'val))
@@ -303,7 +307,8 @@
            (make-instruction-sequence
             '(proc) all-regs
             `((assign continue (label ,proc-return))
-              (assign val (op compiled-procedure-entry)
+              (assign val
+                      (op compiled-procedure-entry)
                       (reg proc))
               (goto (reg val))
               ,proc-return
@@ -312,7 +317,8 @@
         ((and (eq? target 'val) (eq? linkage 'return))
          (make-instruction-sequence
           '(proc continue) all-regs
-          '((assign val (op compiled-procedure-entry)
+          '((assign val
+                    (op compiled-procedure-entry)
                     (reg proc))
             (goto (reg val)))))
         ((and (not (eq? target 'val)) (eq? linkage 'return))

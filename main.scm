@@ -53,4 +53,15 @@
           (make-make-label))))))
   (set-register-contents! machine 'env (setup-environment))
   (start machine)
-  (log-line (get-register-contents machine 'val)))
+  (get-register-contents machine 'val))
+
+(for-each
+ log-line
+ (statements
+  (compile
+   '(define f
+      (lambda (x)
+        (+ x (g (+ x 2)))))
+   'val
+   'next
+   (make-make-label))))
