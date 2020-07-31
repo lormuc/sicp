@@ -147,7 +147,7 @@
 
 (define (trace-instruction inst-text inst-procedure)
   (lambda ()
-    ;; (log-line inst-text)
+    (log-line inst-text)
     (inst-procedure)))
 
 (define (update-insts! insts labels machine)

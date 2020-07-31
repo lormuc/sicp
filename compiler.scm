@@ -1,3 +1,15 @@
+(define (minus? exp)
+  (tagged-list? exp '-))
+
+(define (equality? exp)
+  (tagged-list? exp '=))
+
+(define (plus? exp)
+  (tagged-list? exp '+))
+
+(define (star? exp)
+  (tagged-list? exp '*))
+
 (define (compile exp target linkage make-label)
   (cond ((self-evaluating? exp)
          (compile-self-evaluating exp target linkage make-label))
@@ -18,6 +30,13 @@
           (begin-actions exp) target linkage make-label))
         ((cond? exp)
          (compile (cond->if exp) target linkage make-label))
+        ((let? exp)
+         (compile (let->combination exp)
+                  target linkage make-label))
+        ((or (plus? exp) (star? exp))
+         (compile-open-coded-primitive exp target linkage make-label))
+        ((or (equality? exp) (minus? exp))
+         (compile-open-coded-primitive-2 exp target linkage make-label))
         ((application? exp)
          (compile-application exp target linkage make-label))
         (else
@@ -325,7 +344,7 @@
          (error "return linkage, target not val -- compile"
                 target))))
 
-(define all-regs '(env proc val argl continue))
+(define all-regs '(env proc val argl continue arg1 arg2))
 
 (define (registers-needed s)
   (if (symbol? s) '() (car s)))
@@ -375,9 +394,8 @@
   (if (null? registers)
       (append-instruction-sequences s1 s2)
       (let ((register (car registers)))
-        (if (or #t
-                (and (modifies-register? s1 register)
-                     (needs-register? s2 register)))
+        (if (and (modifies-register? s1 register)
+                 (needs-register? s2 register))
             (preserving
              (cdr registers)
              (make-instruction-sequence
@@ -406,6 +424,43 @@
    (append (statements s1) (statements s2))))
 
 
+(define (spread-arguments args make-label)
+  (assert (equal? 2 (length args)))
+  (preserving
+   '(env)
+   (compile (car args) 'arg1 'next make-label)
+   (preserving
+    '(arg1)
+    (compile (cadr args) 'arg2 'next make-label)
+    (make-instruction-sequence '(arg1) '() '()))))
+
+(define (compile-open-coded-primitive-2 exp target linkage make-label)
+  (end-with-linkage
+   linkage
+   (append-instruction-sequences
+    (spread-arguments (cdr exp) make-label)
+    (make-instruction-sequence
+     '(arg1 arg2) (list target)
+     `((assign ,target (op ,(car exp)) (reg arg1) (reg arg2)))))))
+
+(define (compile-open-coded-primitive exp target linkage make-label)
+  (let ((operands (cdr exp))
+        (operation (car exp)))
+    (cond ((null? operands)
+           (compile (if (eq? operation '*) 1 0)
+                    target linkage make-label))
+          ((= (length operands) 2)
+           (compile-open-coded-primitive-2
+            exp target linkage make-label))
+          (else
+           (compile (list operation
+                          (cons (car exp) (cdr operands))
+                          (car operands))
+                    target
+                    linkage
+                    make-label)))))
+
+
 (define machine-operations
   (list
    (list 'true? true?)
@@ -432,12 +487,15 @@
    (list 'compiled-procedure-env compiled-procedure-env)
    (list 'compiled-procedure-entry compiled-procedure-entry)
    (list 'false? false?)
-   (list 'reverse reverse)))
+   (list '+ +)
+   (list '- -)
+   (list '* *)
+   (list '= =)))
 
 (define (eval-compiled exp)
   (let ((machine
          (make-machine
-          '(exp env val proc argl continue unev)
+          all-regs
           machine-operations
           (statements
            (compile exp 'val 'next (make-make-label))))))

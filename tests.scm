@@ -216,7 +216,85 @@
                    'val 'return (make-make-label)))
 
 (test 3 (eval-compiled 3))
-
 (test 5 (eval-compiled '((lambda (x y) (+ x y)) 3 2)))
+
+(test
+ (append-instruction-sequences
+  (compile '0 'arg1 'next (make-make-label))
+  (compile '1 'arg2 'next (make-make-label)))
+ (spread-arguments '(0 1) (make-make-label)))
+
+(test
+ (append-instruction-sequences
+  (compile '0 'arg1 'next (make-make-label))
+  (preserving
+   '(arg1)
+   (compile '(+ 2 2) 'arg2 'next (make-make-label))
+   (make-instruction-sequence '(arg1) '() '())))
+ (spread-arguments '(0 (+ 2 2)) (make-make-label)))
+
+(test
+ (append-instruction-sequences
+  (spread-arguments '(1 2) (make-make-label))
+  (make-instruction-sequence
+   '(arg1 arg2) '(val)
+   '((assign val (op *) (reg arg1) (reg arg2)))))
+ (compile-open-coded-primitive
+  '(* 1 2) 'val 'next (make-make-label)))
+
+(test
+ (compile-open-coded-primitive
+  '(+ 2 3) 'val 'next (make-make-label))
+ (compile '(+ 2 3) 'val 'next (make-make-label)))
+
+(test 4 (eval-compiled '(+ 0 (+ 2 2))))
+
+(test
+ (compile '(+ 1 (+ 2 3)) 'val 'next (make-make-label))
+ (compile-open-coded-primitive '(+ 1 2 3) 'val 'next (make-make-label)))
+
+(test
+ (compile '(* 2 (* 3 4)) 'val 'next (make-make-label))
+ (compile-open-coded-primitive '(* 2 3 4) 'val 'next (make-make-label)))
+
+(test
+ (compile '(* 5 (* 6 (* 7 8))) 'arg1 'label-0 (make-make-label))
+ (compile-open-coded-primitive '(* 5 6 7 8) 'arg1 'label-0 (make-make-label)))
+
+(test
+ (compile '1 'val 'next (make-make-label))
+ (compile-open-coded-primitive '(*) 'val 'next (make-make-label)))
+
+(test
+ (compile '(- 4 3) 'val 'next (make-make-label))
+ (compile-open-coded-primitive '(- 4 3) 'val 'next (make-make-label)))
+
+(test
+ (compile '(= x y) 'val 'next (make-make-label))
+ (compile-open-coded-primitive '(= x y) 'val 'next (make-make-label)))
+
+(test 0 (eval-compiled '(+)))
+(test 2 (eval-compiled '(+ (+ 1 1))))
+(test 10 (eval-compiled '(+ 1 2 3 4)))
+(test 11 (eval-compiled '(+ (+ 1 2 1) (+ 1 1 1) (+ 2 1 1))))
+(test 6 (eval-compiled '(+ (let ((x 3)) x) (let ((x 1)) x) 2)))
+
+(test 6 (eval-compiled '(* 1 2 3)))
+(test 16 (eval-compiled '(* (* 1 2) (* 2 1 2) (* 1 2))))
+(test 1 (eval-compiled '(*)))
+(test 3 (eval-compiled '(* (+ 1 2))))
+
+(test (eval-compiled 'false) (eval-compiled '(= 3 4)))
+(test (eval-compiled 'true) (eval-compiled '(= 5 5)))
+
+(test 3 (eval-compiled '(- 6 3)))
+(test 0 (eval-compiled '(- (+ 1 2) 3)))
+
+(test 24 (eval-compiled (quote (+ (*) (let ((x 2) (y 3)) (* x y 2))
+                                  (let ((x 5) (y 2)) (+ x (* 2 y 1) 1))
+                                  (- 4 4)
+                                  (- 5 4)))))
+
+(test 3 (eval-compiled '(let ((x 2)) (+ (let ((x 1)) 1) x))))
 
 (test-end)
