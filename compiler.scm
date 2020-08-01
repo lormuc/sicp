@@ -506,6 +506,46 @@
               (list frame-number offset)))))
   (iter 0 lex-env))
 
+(define (lex-compile-variable
+         exp target linkage make-label env)
+  (let ((lex-adr (find-variable exp env)))
+    (end-with-linkage
+     linkage
+     (make-instruction-sequence
+      '(env) (list target)
+      (if (eq? 'not-found lex-adr)
+          `((assign ,target
+                    (op lookup-variable-value)
+                    (const ,exp) (reg env)))
+          `((assign ,target
+                    (op lexical-address-lookup)
+                    (const ,lex-adr)
+                    (reg env))))))))
+
+(define (lex-compile-assignment-helper
+         exp target linkage env get-value-code)
+  (end-with-linkage
+   linkage
+   (preserving
+    '(env)
+    get-value-code
+    (make-instruction-sequence
+     '(env val) (list target)
+     (let* ((var (assignment-variable exp))
+            (lex-adr (find-variable var env)))
+       (if (eq? 'not-found lex-adr)
+           `((perform (op set-variable-value!)
+                      (const ,var)
+                      (reg val)
+                      (reg env))
+             (assign ,target (const ok)))
+           `((perform (op lexical-address-set!)
+                      (const ,lex-adr)
+                      (reg val)
+                      (reg env))
+             (assign ,target (const ok)))))))))
+
+
 (define machine-operations
   (list
    (list 'true? true?)

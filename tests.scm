@@ -358,4 +358,107 @@
 (test 2 (item-index 'c '(a b c)))
 (test 'not-found (item-index 'w '(0 1 2 3 4)))
 
+(test
+ (make-instruction-sequence
+  '(env) '(val)
+  `((assign val
+            (op lexical-address-lookup)
+            (const (0 0)) (reg env))))
+ (lex-compile-variable 'x 'val 'next
+                       (make-make-label)
+                       '((x))))
+(test
+ (end-with-linkage
+  'return
+  (make-instruction-sequence
+   '(env) '(proc)
+   `((assign proc
+             (op lexical-address-lookup)
+             (const (1 2)) (reg env)))))
+ (lex-compile-variable 'y 'proc 'return
+                       (make-make-label)
+                       '((a b) (c d y e) (f g))))
+
+(test
+ (end-with-linkage
+  'label-2
+  (make-instruction-sequence
+   '(env) '(val)
+   `((assign val
+             (op lookup-variable-value)
+             (const y) (reg env)))))
+ (lex-compile-variable 'y 'val 'label-2
+                       (make-make-label)
+                       '((a b) (c))))
+
+(test
+ (preserving
+  '(env)
+  (make-instruction-sequence
+   '() '(val)
+   '((assign val (const 3))))
+  (make-instruction-sequence
+   '(env val) '(val)
+   `((perform (op lexical-address-set!)
+              (const (0 0))
+              (reg val)
+              (reg env))
+     (assign val (const ok)))))
+ (lex-compile-assignment-helper
+  '(set! x 3)
+  'val
+  'next
+  '((x))
+  (make-instruction-sequence
+   '() '(val)
+   '((assign val (const 3))))))
+
+(test
+ (end-with-linkage
+  'label-7
+  (preserving
+   '(env)
+   (make-instruction-sequence
+    '() '(val)
+    '((assign val (const 5))))
+   (make-instruction-sequence
+    '(env val) '(proc)
+    `((perform (op lexical-address-set!)
+               (const (2 1))
+               (reg val)
+               (reg env))
+      (assign proc (const ok))))))
+ (lex-compile-assignment-helper
+  '(set! x 5)
+  'proc
+  'label-7
+  '((a) (b c) (d x) (e))
+  (make-instruction-sequence
+   '() '(val)
+   '((assign val (const 5))))))
+
+(test
+ (end-with-linkage
+  'return
+  (preserving
+   '(env)
+   (make-instruction-sequence
+    '() '(val)
+    '((assign val (const 4))))
+   (make-instruction-sequence
+    '(env val) '(val)
+    `((perform (op set-variable-value!)
+               (const x)
+               (reg val)
+               (reg env))
+      (assign val (const ok))))))
+ (lex-compile-assignment-helper
+  '(set! x 4)
+  'val
+  'return
+  '()
+  (make-instruction-sequence
+   '() '(val)
+   '((assign val (const 4))))))
+
 (test-end)
