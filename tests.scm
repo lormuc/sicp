@@ -461,4 +461,49 @@
    '() '(val)
    '((assign val (const 4))))))
 
+
+(test-error
+ (lookup-variable-value
+  'a
+  (extend-environment
+   '(a) '(*unassigned*)
+   the-empty-environment)))
+(test
+ '((let ((u '*unassigned*)
+         (v '*unassigned*))
+     (set! u e1)
+     (set! v e2)
+     e3))
+ (scan-out-defines
+  '((define u e1)
+    (define v e2)
+    e3)))
+(test
+ '(x y z)
+ (scan-out-defines
+  '(x y z)))
+
+(test
+ (compile
+  (make-lambda
+   '()
+   (scan-out-defines
+    '((define u 1)
+      (define v 2)
+      (+ u v))))
+  'val 'next (make-make-label))
+ (compile '(lambda ()
+             (define u 1)
+             (define v 2)
+             (+ u v))
+          'val 'next (make-make-label)))
+
+(test-error
+ (eval-compiled
+  '(begin
+     (define a 0)
+     ((lambda ()
+        (define b a)
+        (define a 1))))))
+
 (test-end)

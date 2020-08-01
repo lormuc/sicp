@@ -229,7 +229,7 @@
                 (const ,formals)
                 (reg argl)
                 (reg env))))
-     (compile-sequence (lambda-body exp)
+     (compile-sequence (scan-out-defines (lambda-body exp))
                        'val
                        'return
                        make-label))))
@@ -544,6 +544,36 @@
                       (reg val)
                       (reg env))
              (assign ,target (const ok)))))))))
+
+(define (make-let bindings body)
+  (cons 'let (cons bindings body)))
+
+(define (filter predicate sequence)
+  (cond ((null? sequence) '())
+        ((predicate (car sequence))
+         (cons (car sequence)
+               (filter predicate (cdr sequence))))
+        (else (filter predicate (cdr sequence)))))
+
+(define (make-lambda parameters body)
+  (cons 'lambda (cons parameters body)))
+
+(define (scan-out-defines body)
+  (let ((bindings
+         (map (lambda (definition)
+                (list (definition-variable definition)
+                      ''*unassigned*))
+              (filter definition? body))))
+    (if (null? bindings)
+        body
+        (list (make-let
+               bindings
+               (map (lambda (exp)
+                      (if (definition? exp)
+                          `(set! ,(definition-variable exp)
+                                 ,(definition-value exp))
+                          exp))
+                    body))))))
 
 
 (define machine-operations
