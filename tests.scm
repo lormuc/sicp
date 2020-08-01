@@ -347,4 +347,15 @@
    (lexical-address-set! '(2 1) 6 env)
    (lexical-address-lookup '(2 1) env)))
 
+
+(test '(1 2)
+      (find-variable 'c '((y z) (a b c d e) (x y))))
+(test '(2 0)
+      (find-variable 'x '((y z) () (x))))
+(test 'not-found
+      (find-variable 'w '((a b) (c d e) (f g))))
+
+(test 2 (item-index 'c '(a b c)))
+(test 'not-found (item-index 'w '(0 1 2 3 4)))
+
 (test-end)

@@ -488,6 +488,23 @@
          val
          (enclosing-environment env)))))
 
+(define (item-index item items)
+  (define (iter index items)
+    (cond ((null? items) 'not-found)
+          ((equal? (car items) item)
+           index)
+          (else (iter (+ 1 index) (cdr items)))))
+  (iter 0 items))
+
+(define (find-variable var lex-env)
+  (define (iter frame-number lex-env)
+    (if (null? lex-env)
+        'not-found
+        (let ((offset (item-index var (car lex-env))))
+          (if (eq? 'not-found offset)
+              (iter (+ 1 frame-number) (cdr lex-env))
+              (list frame-number offset)))))
+  (iter 0 lex-env))
 
 (define machine-operations
   (list
