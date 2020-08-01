@@ -250,15 +250,15 @@
 (test 4 (eval-compiled '(+ 0 (+ 2 2))))
 
 (test
- (compile '(+ 1 (+ 2 3)) 'val 'next (make-make-label))
+ (compile '(+ (+ 2 3) 1) 'val 'next (make-make-label))
  (compile-open-coded-primitive '(+ 1 2 3) 'val 'next (make-make-label)))
 
 (test
- (compile '(* 2 (* 3 4)) 'val 'next (make-make-label))
+ (compile '(* (* 3 4) 2) 'val 'next (make-make-label))
  (compile-open-coded-primitive '(* 2 3 4) 'val 'next (make-make-label)))
 
 (test
- (compile '(* 5 (* 6 (* 7 8))) 'arg1 'label-0 (make-make-label))
+ (compile '(* (* (* 7 8) 6) 5) 'arg1 'label-0 (make-make-label))
  (compile-open-coded-primitive '(* 5 6 7 8) 'arg1 'label-0 (make-make-label)))
 
 (test

@@ -19,6 +19,3 @@
      (if (= n 1)
          1
          (* n (factorial (- n 1))))))
-
-(display-code (compile '(+ 1 2 3 4) 'arg1 'next (make-make-label)))
-;; (log-line (eval-compiled code))
