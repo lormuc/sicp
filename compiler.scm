@@ -461,6 +461,34 @@
                     make-label)))))
 
 
+(define (lexical-address-lookup adr env)
+  (let ((frame-number (car adr))
+        (displacement-number (cadr adr)))
+    (if (= frame-number 0)
+        (let ((val
+               (list-ref (frame-values (first-frame env))
+                         displacement-number)))
+          (if (eq? val '*unassigned*)
+              (error "unassigned variable -- lexical-address-lookup")
+              val))
+        (lexical-address-lookup
+         (list (- frame-number 1) displacement-number)
+         (enclosing-environment env)))))
+
+(define (lexical-address-set! adr val env)
+  (let ((frame-number (car adr))
+        (displacement-number (cadr adr)))
+    (if (= frame-number 0)
+        (let ((vals
+               (list-tail (frame-values (first-frame env))
+                          displacement-number)))
+          (set-car! vals val))
+        (lexical-address-set!
+         (list (- frame-number 1) displacement-number)
+         val
+         (enclosing-environment env)))))
+
+
 (define machine-operations
   (list
    (list 'true? true?)

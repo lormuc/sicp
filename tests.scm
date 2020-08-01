@@ -297,4 +297,54 @@
 
 (test 3 (eval-compiled '(let ((x 2)) (+ (let ((x 1)) 1) x))))
 
+(test
+ 1
+ (lexical-address-lookup
+  '(0 0)
+  (extend-environment '(x) '(1) the-empty-environment)))
+
+(test
+ 3
+ (lexical-address-lookup
+  '(2 1)
+  (extend-environment
+   '(a) '(0)
+   (extend-environment
+    '(b) '(1)
+    (extend-environment
+     '(c d e) '(2 3 4)
+     (extend-environment
+      '(f) '(5)
+      the-empty-environment))))))
+
+(test-error
+ (lexical-address-lookup
+  '(0 0)
+  (extend-environment '(x) '(*unassigned*) the-empty-environment)))
+
+
+(test
+ 2
+ (let ((env
+        (extend-environment
+         '(x) '(1)
+         the-empty-environment)))
+   (lexical-address-set! '(0 0) 2 env)
+   (lexical-address-lookup '(0 0) env)))
+
+(test
+ 6
+ (let ((env
+        (extend-environment
+         '(a) '(0)
+         (extend-environment
+          '(b) '(1)
+          (extend-environment
+           '(c d e) '(2 3 4)
+           (extend-environment
+            '(f) '(5)
+            the-empty-environment))))))
+   (lexical-address-set! '(2 1) 6 env)
+   (lexical-address-lookup '(2 1) env)))
+
 (test-end)
